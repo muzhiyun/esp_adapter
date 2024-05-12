@@ -41,8 +41,27 @@
     <div class="remote-control" id="remote-control"></div>
 
     <script>
+
+        function getParameterByName(name, url) {
+            if (!url) url = window.location.href;
+            name = name.replace(/[\[\]]/g, '\\$&');
+            var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
+                results = regex.exec(url);
+            if (!results) return null;
+            if (!results[2]) return '';
+            return decodeURIComponent(results[2].replace(/\+/g, ' '));
+        }
+        //http:ip/RC.html?json=template.json
+        var jsonFileName = getParameterByName('json');
+        if (jsonFileName !== null) {
+            console.log("use json file : " + jsonFileName);
+        } else {
+            jsonFileName = "keymap.json";
+            console.log('parameter map undefine! we will use default json filename : ' + jsonFileName);
+        }
+
         $(document).ready(function() {
-            $.getJSON("keymap.json", function(data) {
+            $.getJSON(jsonFileName, function(data) {
                 Object.keys(data).forEach(function(key, index, arr) {
                     var buttonStyle = data[key].style ? data[key].style : {}; 
                     if (data[key].enable) {
