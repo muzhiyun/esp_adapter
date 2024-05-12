@@ -1,0 +1,339 @@
+{
+    "AC_on": {
+        "name": "AC_ON",
+        "enable": true,
+        "protocol": "Relay",
+        "keyValue": "1$2"
+    },
+    "key0": {
+        "name": "key0",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "A1"
+    },
+    "Ac_off": {
+        "name": "AC_OFF",
+        "enable": true,
+        "protocol": "Relay",
+        "keyValue": "0"
+    },
+    "key1": {
+        "name": "Power",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "A1",
+        "style": {
+            "background-color": "red",
+            "color": "blue"
+        }
+    },
+    "key2": {
+        "name": "Key2",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "B2"
+    },
+    "key3": {
+        "name": "Source",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "C3",
+        "style": {
+            "background-color": "#673ab7"
+        }
+    },
+    "key4": {
+        "name": "Netflix",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "A1",
+        "style": {
+            "background-color": "#009688"
+        }
+    },
+    "key5": {
+        "name": "Youtube",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "B2",
+        "style": {
+            "background-color": "#009688"
+        }
+    },
+    "key6": {
+        "name": "Amazon",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "C3",
+        "style": {
+            "background-color": "#009688"
+        }
+    },
+    "key7": {
+        "name": "1",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "Y25"
+    },
+    "key8": {
+        "name": "2",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "Z26"
+    },
+    "key9": {
+        "name": "3",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "AA27"
+    },
+    "key10": {
+        "name": "4",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "AB28"
+    },
+    "key11": {
+        "name": "5",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "AC29"
+    },
+    "key12": {
+        "name": "6",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "AD30"
+    },
+    "key13": {
+        "name": "7",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "AE31"
+    },
+    "key14": {
+        "name": "8",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "AF32"
+    },
+    "key15": {
+        "name": "9",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "AG33"
+    },
+    "key16": {
+        "name": "10",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "AH34"
+    },
+    "key17": {
+        "name": "11",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "AI35"
+    },
+    "key18": {
+        "name": "12",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "AJ36"
+    },
+    "key19": {
+        "name": "Menu",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "A1"
+    },
+    "key20": {
+        "name": "key20",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "B2"
+    },
+    "key21": {
+        "name": "Back",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "C3"
+    },
+    "key22": {
+        "name": "key22",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "A1"
+    },
+    "key23": {
+        "name": "UP",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "B2",
+        "style": {
+            "border-radius": "50% 50% 0% 0%"
+        }
+    },
+    "key24": {
+        "name": "key24",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "C3"
+    },
+    "key25": {
+        "name": "Left",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "A1",
+        "style": {
+            "border-radius": "50% 0% 0% 50%"
+        }
+    },
+    "key26": {
+        "name": "OK",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "B2",
+        "style": {
+            "border-radius": "50% 50% 50% 50%"
+        }
+    },
+    "key27": {
+        "name": "Right",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "B2",
+        "style": {
+            "border-radius": "0% 50% 50% 0%"
+        }
+    },
+    "key28": {
+        "name": "key28",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "D4"
+    },
+    "key29": {
+        "name": "Down",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "E5",
+        "style": {
+            "border-radius": "0% 0% 50% 50%"
+        }
+    },
+    "key30": {
+        "name": "key30",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "F6"
+    },
+    "key31": {
+        "name": "EPG",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "G7"
+    },
+    "key32": {
+        "name": "key32",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "H8"
+    },
+    "key33": {
+        "name": "Tool",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "I9"
+    },
+    "key34": {
+        "name": "iView",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "J10"
+    },
+    "key35": {
+        "name": "ScreenCap",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "K11"
+    },
+    "key36": {
+        "name": "Info",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "L12"
+    },
+    "key37": {
+        "name": "CH+",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "M13"
+    },
+    "key38": {
+        "name": "key38",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "N14"
+    },
+    "key39": {
+        "name": "Vol+",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "O15"
+    },
+    "key40": {
+        "name": "CH-",
+        "enable": true,
+        "protocol": "IR",
+        "keyValue": "P16"
+    },
+    "key41": {
+        "name": "key41",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "Q17"
+    },
+    "key42": {
+        "name": "Vol-",
+        "enable": true,
+        "protocol": "RF",
+        "keyValue": "R18"
+    },
+    "key43": {
+        "name": "key43",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "S19"
+    },
+    "key44": {
+        "name": "key44",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "T20"
+    },
+    "key45": {
+        "name": "key45",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "U21"
+    },
+    "key46": {
+        "name": "key46",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "V22"
+    },
+    "key47": {
+        "name": "key47",
+        "enable": false,
+        "protocol": "RF",
+        "keyValue": "W23"
+    },
+    "key48": {
+        "name": "key48",
+        "enable": false,
+        "protocol": "IR",
+        "keyValue": "X24"
+    }
+}

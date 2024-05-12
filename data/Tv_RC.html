@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="jquery-3.6.0.min.js"></script>
+<title>ESP8266 Remote Control</title>
+<link rel="stylesheet" href="bootstrap.min.css">
+</head>
+<body>
+<div class="remote-control-container">
+    <h1>ESP8266 Remote Control</h1>
+    <style>
+        .remote-control-container {
+            position: absolute;
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+        }
+
+        .remote-control {
+            width: 300px;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            text-align: center;
+            display: flex;
+            flex-wrap: wrap;
+        }
+    
+        .remote-control button {
+            flex: 1 1 24%;
+            text-align: center;
+            margin: 5px;
+            width: 40px;
+            height: 40px;
+            font-size: 10px;
+        }
+    </style>
+    <div class="remote-control" id="remote-control"></div>
+
+    <script>
+        $(document).ready(function() {
+            $.getJSON("keymap.json", function(data) {
+                Object.keys(data).forEach(function(key, index, arr) {
+                    var buttonStyle = data[key].style ? data[key].style : {}; 
+                    if (data[key].enable) {
+                        var button = $(`<button type="button" class="btn btn-primary btn-lg" data-protocol="${data[key].protocol}" data-keyvalue="${data[key].keyValue}">${data[key].name}</button>`);
+                    } else {
+                        var button = $(`<button type="button" class="btn btn-primary btn-lg invisible" data-protocol="${data[key].protocol}" data-keyvalue="${data[key].keyValue}">${data[key].name}</button>`);
+                    }
+                    button.css(buttonStyle);
+                    $("#remote-control").append(button);
+                });
+    
+                $("#remote-control button").click(function() {
+                    var protocol = $(this).data("protocol");
+                    var keyValue = $(this).data("keyvalue");
+                    sendData({ "protocol": protocol, "keyValue": keyValue });
+                });
+            })
+            .fail(function() {
+                $("#remote-control").append("<p>Failed to load json file. Please check and try again later.</p>");
+            });    
+        });
+        
+
+        function sendData(data){
+            var esp8266IpAddress = window.location.hostname; 
+            $.ajax({
+                type: "GET",
+                url: "http://" + esp8266IpAddress + "/data",
+                data: data,
+                success: function(response){
+                    console.log("Data sent successfully");
+                },
+                error: function(xhr, status, error){
+                    console.error("Error sending data");
+                }
+            });
+        }
+
+    </script>
+</div>
+<!-- 
+
+// 函数用于统计 $ 符号出现的次数和位置
+void findDollarPositions(String str, int& count, int positions[], int maxPositions) {
+    count = 0;
+
+    for (int i = 0; i < str.length(); i++) {
+        if (str.charAt(i) == '$') {
+            if (count < maxPositions) {
+                positions[count] = i;
+                count++;
+            }
+        }
+    }
+}
+
+// 函数用于根据 $ 符号切割字符串并存储到数组中
+void splitString(String str, String substrings[], int positions[], int count) {
+    int start = 0;
+    for (int i = 0; i < count; i++) {
+        substrings[i] = str.substring(start, positions[i]);
+        start = positions[i] + 1;
+    }
+    substrings[count] = str.substring(start);
+}
+
+
+    #define maxPositions  10  // 最大支持的参数
+    int positions[maxPositions];
+    int count;
+
+    // 统计 $ 符号出现的次数和位置
+    findDollarPositions(keyValue, count, positions, maxPositions);
+
+    // 输出 $ 符号出现的次数和位置
+    Serial.print("Number of $ symbols: ");
+    Serial.println(count);
+    Serial.print("Positions of $ symbols: ");
+    for (int i = 0; i < count; i++) {
+        Serial.print(positions[i]);
+        Serial.print(" ");
+    }
+    Serial.println();
+
+    // 创建存储小字符串的数组
+    String substrings[count + 1];
+
+    // 切割字符串并存储到数组中
+    splitString(keyValue, substrings, positions, count);
+
+    // 输出每个小字符串
+    for (int i = 0; i < count + 1; i++) {
+        Serial.print("SubString ");
+        Serial.print(i + 1);
+        Serial.print(": ");
+        Serial.println(substrings[i]);
+    }
+
+
+void handleRequest() {
+    if (server.hasArg("protocol") && server.hasArg("keyValue")) {
+        String protocol = server.arg("protocol");
+        String keyValue = server.arg("keyValue");
+        int index = keyValue.indexOf('$');
+        bool isMultiValue = false;
+        if (index != -1) {                                  // 確保找到了 $ 符號
+            String part1 = keyValue.substring(0, index);
+            String part2 = keyValue.substring(index + 1);
+            if (!part1.isEmpty() && !part2.isEmpty()) {     // 判斷切割後的部分是否為空
+                uint64_t value1 = part1.toInt();
+                uint64_t value2 = part2.toInt();
+                isMultiValue = true;
+            } 
+        } else {
+            uint64_t value1 = keyValue.toInt();
+            isMultiValue = false;
+        }
+      if (protocol == "Relay") {
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        sendRelay(keyValue);
+      } else if (protocol == "rGPIO"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        digitalRead(keyValue);
+      } else if (protocol == "wGPIO"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        digitalWrite(4, LOW);
+      } else if (protocol == "mGPIO"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        pinMode(4, keyValue);
+      } else if (protocol == "tGPIO"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        if(digitalRead(keyValue) == HIGH)
+            digitalWrite(keyValue, LOW);  
+        else               
+            digitalWrite(keyValue, HIGH);  
+      } else if (protocol == "NEC"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendNEC(keyValue);
+      } else if (protocol == "Sony"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendSony(keyValue);
+      } else if (protocol == "Sony38"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendSony38(keyValue);
+      } else if (protocol == "Panasonic"){
+        if (isMultiValue)
+            irsend.sendPanasonic(value1, value2);
+      } else if (protocol == "RC5"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendRC5(keyValue);
+      } else if (protocol == "RC6"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendRC6(keyValue);
+      } else if (protocol == "Sharp"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.Sharp(keyValue);
+      } else if (protocol == "JVC"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.JVC(keyValue);
+      } else if (protocol == "SAMSUNG"){
+        uint64_t keyValue = server.arg("keyValue").toInt();
+        irsend.sendSAMSUNG(keyValue);
+      } else {
+        server.send(400, "text/plain", "Unsupport protocol, please check!");
+        return;
+      }
+      server.send(200, "text/plain", "Request processed");
+    } else {
+      server.send(400, "text/plain", "Missing or invalid  parameter");
+    }
+  }
+ -->
+</body>
+</html>
+
