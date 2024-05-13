@@ -31,9 +31,7 @@
 #include <LittleFS.h>  // This file system is used.
 
 #include <CircularBuffer.hpp>  //For web console log
-
-// #include "MyCEC_Device.h"
-
+// #include <ESP8266SmartConfig.h>
 // local time zone definition
 #define TIMEZONE "CST-8"
 
@@ -88,16 +86,74 @@ const uint8_t kTolerancePercentage = kTolerance;  // kTolerance is normally 25%
 const uint32_t kUartBaudRate = 115200;  
 
 //wifi STA PARAMETERS
-const char* ssid       = "EcologicalPark1";
-const char* password   = "1234568907";
-#if IsSupportMultiWiFi
-const char* ssid2       = "EcologicalPark2";
-const char* password2   = "1234568907";
-const char* ssid3       = "TP-LINK_48D0";
-const char* password3   = "";
-const char* ssid4       = "ziroom709";
-const char* password4   = "4001001111";
-#endif
+const char* defaultWifiList[][2] = {
+    {"EcologicalPark1", "1234568907"},  // When IsSupportMultiWiFi=0 only the first parameter will be used
+    {"EcologicalPark2", "1234568907"},
+    {"TP-LINK_48D0", ""},
+    {"ziroom709", "4001001111"}
+};
+String wifiConfigFileName = "/wifi_config.txt";
+char*** wifiList; // 使用malloc存储WiFi配置
+int numWiFi = 0; // 当前WiFi配置数目
+bool apAndSmartConfigMode = false;
+
+
+
+void saveWifiConfig(const char* fileName, String tmp_ssid , String tmp_password) {
+    File configFile = LittleFS.open(fileName, "a");
+    if (!configFile) {
+        Serial.println("Failed to open config file for writing");
+        return;
+    }
+    configFile.print(tmp_ssid);
+    configFile.print(",");
+    configFile.println(tmp_password);
+
+    configFile.close();
+}
+
+
+
+void loadWifiConfig(const char* fileName) {
+    File configFile = LittleFS.open(fileName, "r");
+    if (!configFile) {
+        Serial.println("Failed to open config file for reading");
+        return;
+    }
+
+    // 在加载新的WiFi配置前，清空原有的WiFi配置
+    cleanupWifiList();
+    numWiFi = 0;
+
+    // 读取配置文件，动态分配和扩展堆空间存储WiFi配置
+    while (configFile.available()) {
+        String line = configFile.readStringUntil('\n');
+        if (line.length() > 0) {
+            if( numWiFi == 0) {
+              wifiList[numWiFi] = (char**)malloc(line.length() * sizeof(char*)); // 分配内存存储WiFi名称和密码
+            } else {
+              wifiList = (char***)realloc(wifiList, line.length() * sizeof(char**));
+            }
+            int separatorIndex = line.indexOf(',');
+            if (separatorIndex != -1) {
+                
+                wifiList[numWiFi][0] = strdup(line.substring(0, separatorIndex).c_str());
+                wifiList[numWiFi][1] = strdup(line.substring(separatorIndex + 1).c_str());
+                numWiFi++;
+            }
+        }
+    }
+
+    configFile.close();
+}
+
+void cleanupWifiList() {
+    for (int i = 0; i < numWiFi; i++) {
+        free(wifiList[i]);
+    }
+}
+
+
 
 
 //wifi AP PARAMETERS
@@ -215,6 +271,11 @@ void setup() {
   // Perform a low level sanity checks that the compiler performs bit field
   // packing as we expect and Endianness is as we expect.
   assert(irutils::lowLevelSanityCheck() == 0);
+  Serial.printf("Mounting the filesystem...\n");
+  if (!LittleFS.begin()) {
+    Serial.printf("could not mount the filesystem...\n");
+    delay(2000);
+  }
 
   Serial.printf("\n" D_STR_IRRECVDUMP_STARTUP "\n", kIrRecvPin);
   // SerialBT.begin("ESP32BT"); //Bluetooth device name
@@ -234,11 +295,14 @@ void setup() {
 
   Serial.printf("Starting WebServer example...\n");
 
-  Serial.printf("Mounting the filesystem...\n");
-  if (!LittleFS.begin()) {
-    Serial.printf("could not mount the filesystem...\n");
-    delay(2000);
+  delay(10000);                                 // wait fs mount
+  if (!LittleFS.exists(wifiConfigFileName)) {  // Write Default Wifi to ConfigFile 
+    Serial.println("The wifiConfigFile lost, we will create and write defaultWifiList to wifiConfigFile");
+    for (int i = 0; i < sizeof(defaultWifiList) / sizeof(defaultWifiList[0]); i++) {
+        saveWifiConfig(wifiConfigFileName.c_str(), defaultWifiList[i][0], defaultWifiList[i][1]);
+    }
   }
+  loadWifiConfig(wifiConfigFileName.c_str());
 
   WiFi.mode(WIFI_STA);                        // start to Connect to WiFi
   WiFi.setHostname(HOSTNAME);
@@ -247,10 +311,9 @@ void setup() {
   WiFi.onEvent(&handleWiFiEvent);
 #if IsSupportMultiWiFi
   // Register multi WiFi networks
-  wifiMulti.addAP(ssid, password);
-  wifiMulti.addAP(ssid2, password2);
-  wifiMulti.addAP(ssid3, password3);
-  wifiMulti.addAP(ssid4, password4);
+  for (int i = 0; i < numWiFi; i++) {
+      wifiMulti.addAP(wifiList[i][0], wifiList[i][1]);
+  }
   Serial.println("Try connecting to Multi Wifi...");
 
   // Wait for wifi connection or timeout
@@ -260,8 +323,9 @@ void setup() {
       Serial.print(".");
   }
 #else
-  Serial.printf("Try connecting to %s ", ssid);
-  WiFi.begin(ssid, password);
+  Serial.printf("Try connecting to %s ", wifiList[0][0]);
+  WiFi.begin(wifiList[0][0], wifiList[0][1]);   //only use the first config
+  //WiFi.begin(defaultWifiList[i][0], defaultWifiList[i][1]);
 
   unsigned long startAttemptTime = millis();
 
@@ -273,7 +337,7 @@ void setup() {
 #endif
 
   if(WiFi.status() != WL_CONNECTED) {
-    Serial.println("\r\n Failed to connect wifi : ");
+    Serial.println("\r\n Failed to connect wifi, We will start AP & SmartConfig ");
     //Serial.println(WiFi.printDiag(Serial));
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(APip, APgateway, APsubnet);
@@ -282,6 +346,10 @@ void setup() {
     Serial.print("AP IP address: ");
     Serial.println(myIP);
     Serial.println();
+    Serial.println("Starting SmartConfig");
+    //SmartConfig.start();
+     WiFi.beginSmartConfig();
+    apAndSmartConfigMode = true;
   } else {
     Serial.print("setup(): WiFi Connected: ");
     Serial.println(WiFi.SSID());
@@ -331,13 +399,30 @@ void setup() {
 
   // Add http service to MDNS-SD(service discovery).
   MDNS.addService("http", "tcp", 80);
-  //MDNS.addService("http", "tcp", 8080);
   Serial.printf("HTTPUpdateServer ready! Open http://%s.local%s in your browser for OTA\n", HOSTNAME, update_path);
 
   
 }
 
 void loop() {
+  // Handle SmartConfig
+  //if (apAndSmartConfigMode && SmartConfig.process()) {
+  if (apAndSmartConfigMode && WiFi.smartConfigDone()) {
+      Serial.println("SmartConfig received");
+      // Get and save the received WiFi credentials
+      // String tmp_ssid = SmartConfig.getSSID();
+      // String tmp_password = SmartConfig.getPassword();
+      String tmp_ssid = WiFi.SSID();
+      String tmp_password = WiFi.psk();
+      saveWifiConfig(wifiConfigFileName.c_str(), tmp_ssid.c_str(), tmp_password.c_str()); 
+
+      // Connect to the received WiFi
+#if IsSupportMultiWiFi
+      wifiMulti.addAP(tmp_ssid.c_str(), tmp_password.c_str());
+#elif
+      WiFi.begin(tmp_ssid, tmp_password);
+#endif
+  }
   if (Serial.available() > 0) {
     // 读取串口数据
     String received = Serial.readString();
@@ -518,6 +603,11 @@ void handleWiFiEvent(WiFiEvent_t event){
             Serial.println(WiFi.SSID());
             Serial.print("Event: IP Address: ");
             Serial.println(WiFi.localIP());
+            if(apAndSmartConfigMode) {  //stop AP and SmartConfig
+              WiFi.softAPdisconnect(true);
+              WiFi.mode(WIFI_STA);
+              WiFi.stopSmartConfig();
+            }
             break;
         case WIFI_EVENT_STAMODE_DHCP_TIMEOUT:
             break;
