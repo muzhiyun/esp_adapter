@@ -56,6 +56,31 @@ const uint8_t kTolerancePercentage = kTolerance;  // kTolerance is normally 25%
 IRrecv irrecv(kRecvPin, kCaptureBufferSize, kTimeout, true);
 decode_results results;  // Somewhere to store the results
 
+volatile bool newData = false;
+String logData;
+
+void handleSSE() {
+  server.sendHeader("Content-Type", "text/event-stream");
+  server.sendHeader("Cache-Control", "no-cache");
+  server.send(200, "text/event-stream", ":ok\n\n");
+
+  if (newData) {
+    server.sendContent("data: " + logData + "\n\n");
+    newData = false;
+  }
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    logData += c;
+    if (c == '\n') {
+      newData = true;
+    }
+  }
+}
+
+
 
 uint8_t acData[] = {
     0x83,0x06,0x04,0x92,0x00,0x00,0x80,0x00,0x00,0x00,0x00,0x00,0x00,0x16,0x00,0x25,0x00,0x00,0x20,0x14,0x11};
@@ -90,6 +115,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   server.on("/", handleRoot);
+  //server.on("/events", HTTP_GET, handleSSE);
   server.begin();
   Serial.println("HTTP server started");
 
@@ -99,10 +125,13 @@ void setup() {
 #endif  // DECODE_HASH
   irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
   irrecv.enableIRIn();  // Start the receiver
+  Serial.println("HTTP server finish");
+
 }
 
 
 void handleRoot() {
+  Serial.println("handleRoot");
   server.send(200, "text/html", "<h1>You are connected yaning</h1>");
   Serial.println("a Samsung A/C state from IRrecvDumpV2");
   irsend.sendWhirlpoolAC(acData);
@@ -119,25 +148,25 @@ void handleRoot() {
 
 void loop() {
   server.handleClient();
-  if (irrecv.decode(&results)) {
-    // Display a crude timestamp.
-    uint32_t now = millis();
-    Serial.printf(D_STR_TIMESTAMP " : %06u.%03u\n", now / 1000, now % 1000);
-    // Check if we got an IR message that was to big for our capture buffer.
-    if (results.overflow)
-      Serial.printf(D_WARN_BUFFERFULL "\n", kCaptureBufferSize);
-    // Display the library version the message was captured with.
-    Serial.println(D_STR_LIBRARY "   : v" _IRREMOTEESP8266_VERSION_STR "\n");
-    // Display the tolerance percentage if it has been change from the default.
-    if (kTolerancePercentage != kTolerance)
-      Serial.printf(D_STR_TOLERANCE " : %d%%\n", kTolerancePercentage);
-    // Display the basic output of what we found.
-    Serial.print(resultToHumanReadableBasic(&results));
-    // Display any extra A/C info if we have it.
-    String description = IRAcUtils::resultAcToString(&results);
-    if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
-    yield();  // Feed the WDT as the text output can take a while to print.
-  }
+  // if (irrecv.decode(&results)) {
+  //   // Display a crude timestamp.
+  //   uint32_t now = millis();
+  //   Serial.printf(D_STR_TIMESTAMP " : %06u.%03u\n", now / 1000, now % 1000);
+  //   // Check if we got an IR message that was to big for our capture buffer.
+  //   if (results.overflow)
+  //     Serial.printf(D_WARN_BUFFERFULL "\n", kCaptureBufferSize);
+  //   // Display the library version the message was captured with.
+  //   Serial.println(D_STR_LIBRARY "   : v" _IRREMOTEESP8266_VERSION_STR "\n");
+  //   // Display the tolerance percentage if it has been change from the default.
+  //   if (kTolerancePercentage != kTolerance)
+  //     Serial.printf(D_STR_TOLERANCE " : %d%%\n", kTolerancePercentage);
+  //   // Display the basic output of what we found.
+  //   Serial.print(resultToHumanReadableBasic(&results));
+  //   // Display any extra A/C info if we have it.
+  //   String description = IRAcUtils::resultAcToString(&results);
+  //   if (description.length()) Serial.println(D_STR_MESGDESC ": " + description);
+  //   yield();  // Feed the WDT as the text output can take a while to print.
+  // }
 }
 
 
