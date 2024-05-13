@@ -1,10 +1,5 @@
-// #include <ESP8266WebServer-impl.h>
-// #include <ESP8266WebServer.h>
-// #include <ESP8266WebServerSecure.h>
-// #include <Parsing-impl.h>
-// #include <Uri.h>
 
-#include <CEC_Device.h>
+#include <stdint.h>
 #include <Common.h>
 #include <Arduino.h>
 #include <assert.h>
@@ -31,8 +26,6 @@
 // #include "BluetoothSerial.h"
 #include "CEC_Device.h"
 
-// #include <aREST.h>
-// #include <aREST_UI.h>
 
 #include <FS.h>        // File System for Web Server Files
 #include <LittleFS.h>  // This file system is used.
@@ -102,6 +95,8 @@ const char* ssid2       = "EcologicalPark2";
 const char* password2   = "1234568907";
 const char* ssid3       = "TP-LINK_48D0";
 const char* password3   = "";
+const char* ssid4       = "ziroom709";
+const char* password4   = "4001001111";
 #endif
 
 
@@ -134,7 +129,6 @@ uint64_t kVestelRcEnterdata = 0x75;
 
 //HTTP PARAMETERS
 const int http_port = 80;
-//const int api_port = 8080;
 
 // HttpUpdateServer PARAMETERS
 const char* update_path = "/ota";
@@ -150,10 +144,8 @@ const char* www_password = "admin";
 IRsend irsend(kIrSendPin);  // Set the GPIO to be used to sending the message.
 decode_results IRRecvResults;     // Somewhere to store the results
 IRrecv irrecv(kIrRecvPin, kCaptureBufferSize, kTimeout, true);
-// WiFiServer RESTAPIserver(api_port);
 ESP8266WebServer httpserver(http_port);
 CEC_Device cec_device(kCecPin);
-// aREST_UI rest = aREST_UI();     // Create aREST instance
 // BluetoothSerial SerialBT;
 #if defined(ESP8266)
 const char* HOSTNAME = "esp8266";
@@ -190,21 +182,15 @@ LoggingSerial LogSerial(0);
   #define Serial LogSerial
 #endif
 
-// Variables to be exposed to the API
-// int temperature;
-// float humidity;
 
 // ==================== Custom function declaration begins ====================
 void printLocalTime();
 void browseService(const char * service, const char * proto);
 void mDNS_SD_Extended();
-//void handleHTTP();
 void dumpIR();
 void handleTest();
 void handleGraph();
 void drawGraph();
-// void handleREST();
-// void handleREST_2();
 void handleNotFound();
 void handleSysInfo();
 void onStationConnected(const WiFiEventStationModeConnected& evt);
@@ -219,82 +205,6 @@ void findDollarPositions(String str, int& count, int positions[]);
 uint64_t parseStringtoUint64(String str);
 
 // ==================== Main function declaration begins ====================
-
-
-/*
-// ===== Request Handler class used to answer more complex requests =====
-
-// The FileServerHandler is registered to the web server to support DELETE and UPLOAD of files into the filesystem.
-class FileServerHandler : public RequestHandler {
-public:
-  // @brief Construct a new File Server Handler object
-  // @param fs The file system to be used.
-  // @param path Path to the root folder in the file system that is used for serving static data down and upload.
-  // @param cache_header Cache Header to be used in replies.
-  FileServerHandler() {
-    TRACE("FileServerHandler is registered\n");
-  }
-
-
-  // @brief check incoming request. Can handle POST for uploads and DELETE.
-  // @param requestMethod method of the http request line.
-  // @param requestUri request ressource from the http request line.
-  // @return true when method can be handled.
-  bool canHandle(HTTPMethod requestMethod, const String UNUSED &_uri) override {
-    return ((requestMethod == HTTP_POST) || (requestMethod == HTTP_DELETE));
-  }  // canHandle()
-
-
-  bool canUpload(const String &uri) override {
-    // only allow upload on root fs level.
-    return (uri == "/");
-  }  // canUpload()
-
-
-  bool handle(ESP8266WebServer &server, HTTPMethod requestMethod, const String &requestUri) override {
-    // ensure that filename starts with '/'
-    String fName = requestUri;
-    if (!fName.startsWith("/")) { fName = "/" + fName; }
-
-    if (requestMethod == HTTP_POST) {
-      // all done in upload. no other forms.
-
-    } else if (requestMethod == HTTP_DELETE) {
-      if (LittleFS.exists(fName)) { LittleFS.remove(fName); }
-    }  // if
-
-    httpserver.send(200);  // all done.
-    return (true);
-  }  // handle()
-
-
-  // uploading process
-  void upload(ESP8266WebServer UNUSED &server, const String UNUSED &_requestUri, HTTPUpload &upload) override {
-    // ensure that filename starts with '/'
-    String fName = upload.filename;
-    if (!fName.startsWith("/")) { fName = "/" + fName; }
-
-    if (upload.status == UPLOAD_FILE_START) {
-      // Open the file
-      if (LittleFS.exists(fName)) { LittleFS.remove(fName); }  // if
-      _fsUploadFile = LittleFS.open(fName, "w");
-
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      // Write received bytes
-      if (_fsUploadFile) { _fsUploadFile.write(upload.buf, upload.currentSize); }
-
-    } else if (upload.status == UPLOAD_FILE_END) {
-      // Close the file
-      if (_fsUploadFile) { _fsUploadFile.close(); }
-    }  // if
-  }    // upload()
-
-protected:
-  File _fsUploadFile;
-};
-*/
-
-
 
 void setup() {
   //disableLoopWDT();
@@ -330,35 +240,6 @@ void setup() {
     delay(2000);
   }
 
-  //REST API init
-  // Set the title
-  // rest.title("aREST UI Demo");
-
-  // rest.label("pin4");
-  // // Create button to control pin 5
-  // rest.button(4);
-
-  // // Init variables and expose them to REST API
-  // temperature = 22;
-  // humidity = 39.1;
-  // rest.variable("temperature", &temperature);
-  // rest.variable("humidity", &humidity);
-
-  // // Labels
-  // rest.label("temperature");
-  // rest.label("humidity");
-
-  // // Function to be exposed
-  // // http://ip:8080/Relay?params=0
-  // rest.function("Relay", ledControl);
-  // rest.function("IR", IRPowerControl);
-
-  // rest.callFunction("IR", "push");
-
-  // // Give name and ID to device
-  // rest.set_id("1");
-  // rest.set_name(HOSTNAME);
-
   WiFi.mode(WIFI_STA);                        // start to Connect to WiFi
   WiFi.setHostname(HOSTNAME);
   WiFi.onStationModeConnected(&onStationConnected);
@@ -369,6 +250,7 @@ void setup() {
   wifiMulti.addAP(ssid, password);
   wifiMulti.addAP(ssid2, password2);
   wifiMulti.addAP(ssid3, password3);
+  wifiMulti.addAP(ssid4, password4);
   Serial.println("Try connecting to Multi Wifi...");
 
   // Wait for wifi connection or timeout
@@ -392,7 +274,6 @@ void setup() {
 
   if(WiFi.status() != WL_CONNECTED) {
     Serial.println("\r\n Failed to connect wifi : ");
-    //Serial.println(WiFi.printDiag(Serial));
     //Serial.println(WiFi.printDiag(Serial));
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(APip, APgateway, APsubnet);
@@ -434,11 +315,9 @@ void setup() {
   httpserver.on("/rand.svg", HTTP_GET, drawGraph);
   // register a redirect handler when only domain name is given.
   httpserver.on("/", HTTP_GET, handleRedirect);
-  // register some REST services
   httpserver.on("/list", HTTP_GET, handleListFiles);
    // serve a built-in htm page
   httpserver.on("/upload", handleUpload);
-  //httpserver.on("/", handleREST);
   httpserver.onNotFound(handleNotFound);
   //enable CORS header in webserver results
   httpserver.enableCORS(true);
@@ -450,10 +329,6 @@ void setup() {
   httpserver.begin();
   Serial.println("Http Server started");
 
-  // Start the RESTapi server
-  // RESTAPIserver.begin();
-  // Serial.println("RESTapi Server started");
-
   // Add http service to MDNS-SD(service discovery).
   MDNS.addService("http", "tcp", 80);
   //MDNS.addService("http", "tcp", 8080);
@@ -463,23 +338,6 @@ void setup() {
 }
 
 void loop() {
-// #if IsSupportMultiWiFi
-//   static bool isConnected = false;
-//   uint8_t WiFiStatus = wifiMulti.run();
-
-//   if (WiFiStatus == WL_CONNECTED) {
-//     if (!isConnected) {
-//       Serial.println("");
-//       Serial.print("WiFi connected: ");
-//       Serial.println(WiFi.SSID());
-//       Serial.print("IP address: ");
-//       Serial.println(WiFi.localIP());
-//       Serial.println(" ");
-//     }
-//     isConnected = true;
-//   } 
-// #endif
-
   if (Serial.available() > 0) {
     // 读取串口数据
     String received = Serial.readString();
@@ -540,8 +398,6 @@ void loop() {
   }
   cec_device.Run();
   //if(WiFi.status() == WL_CONNECTED) {
-    //handleHTTP();
-    //handleREST_2();
     httpserver.handleClient();
     MDNS.update();
   //}
@@ -738,48 +594,7 @@ void mDNS_SD_Extended() {
     delay(1000);
 }
 
-
-/*
-//http://ip:8080/Relay?params=0
-int ledControl(String command) {
-  // Print command
-  Serial.println(command);
-
-  // Get state from command
-  int state = command.toInt();
-
-  digitalWrite(kRelayPin, state);
-  return 1;
-}
-
-int IRPowerControl(String command) {
-  // Print command
-  Serial.println(command);
-
-  // // Get state from command
-  // int state = command.toInt();
-
-  // digitalWrite(kRelayPin, state);
-  irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-  return 1;
-}
-*/
-
-// 用于提供日志信息的Web接口
-// void handleGetLogs() {
-//   String logs = "";
-//   for (String& log : logBuffer) {
-//     logs += log + "\n";
-//   }
-//   httpserver.send(200, "text/plain", logs);
-// }
 void handleGetLogs() {
-  // String logs = "";
-  // for (auto it = logBuffer.begin(); it != logBuffer.end(); ++it) {
-  //   logs += *it + "\n";
-  // }
-  // httpserver.send(200, "text/plain", logs);
-
   String logData;
   while (!logBuffer.isEmpty()) {
       logData += logBuffer.shift();
@@ -907,11 +722,7 @@ void handleAPI() {
       }
 
       if (protocol == "Relay") {
-        //sendRelay(values[0]);
         digitalWrite(kRelayPin, values[0]);
-        //digitalWrite(kRelayPin, LOW);
-        //delay(2000);  // wait for 2s
-        //digitalWrite(kRelayPin, HIGH);
       } else if (protocol == "rGPIO"){
         digitalRead(values[0]);            //todo:we need return the result
       } else if (protocol == "wGPIO"){
@@ -1063,48 +874,6 @@ void handleNotFound() {
   httpserver.send(404, "text/plain", message);
 }
 
-
-// void handleREST_2(){
-//   WiFiClient client = RESTAPIserver.accept(); 
-//    if (client) {
-//       Serial.println("start handle REST api");
-//       while (!client.available()) {
-//         delay(1);
-//       }
-//       rest.handle(client);
-//       Serial.println("stop handle REST api");
-//    }
-  
-// }
-
-// void handleREST() {
-//   String message = "File Not Found\n\n";
-//   message += "URI: ";
-//   message += httpserver.uri();
-//   message += "\nMethod: ";
-//   message += (httpserver.method() == HTTP_GET) ? "GET" : "POST";
-//   message += "\nArguments: ";
-//   message += httpserver.args();
-//   message += "\n";
-
-//   for (uint8_t i = 0; i < httpserver.args(); i++) { message += " " + httpserver.argName(i) + ": " + httpserver.arg(i) + "\n"; }
-//   Serial.println(message);
-//   // Handle REST calls
-//   WiFiClient client = httpserver.client();
-//   if (!client) {
-//     Serial.println("client is null");
-//     return;
-//   }
-//   // if (!client.available()) {
-//   // //   delay(1);
-//   //   handleNotFound();
-//   // }
-//   Serial.println("start handle REST api");
-//   rest.handle(client);
-//   Serial.println("stop handle REST api");
-// }
-
-
 void handleTest() {
   //ClientType client = httpserver.client();
   Serial.println(" ");
@@ -1129,72 +898,6 @@ void handleTest() {
                                       Click <a href=\"/trigger\">here</a> to change the Relay on pin 4.<br>");
   }
 }
-
-/*
-void handleHTTP()
-{
-  
-#if defined(ESP8266)
-  WiFiClient client = httpserver.accept();   // listen for incoming clients
-#else   
-  WiFiClient client = httpserver.available();   // listen for incoming clients
-#endif  
-  if (client) {                             // if you get a client,
-    Serial.println("New Client.");           // print a message out the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected()) {            // loop while the client's connected
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        if (c == '\n') {                    // if the byte is a newline character
- 
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println();
- 
-            // the content of the HTTP response follows the header:
-            client.print("Click <a href=\"/H\">here</a> to turn the Relay on pin 4 on.<br>");
-            client.print("Click <a href=\"/L\">here</a> to turn the Relay on pin 4 off.<br>");
-            client.print("Click <a href=\"/trigger\">here</a> to change the Relay on pin 4.<br>");
- 
-            // The HTTP response ends with another blank line:
-            client.println();
-            // break out of the while loop:
-            break;
-          } else {    // if you got a newline, then clear currentLine:
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
- 
-        // Check to see if the client request was "GET /H" or "GET /L":
-        if (currentLine.endsWith("GET /H")) {
-          digitalWrite(kRelayPin, HIGH);               // GET /H turns the LED on
-        }
-        if (currentLine.endsWith("GET /L")) {
-          digitalWrite(kRelayPin, LOW);                // GET /L turns the LED off
-        }
-        if (currentLine.endsWith("GET /trigger")) {
-          if(digitalRead(kRelayPin) == HIGH ) {
-              digitalWrite(kRelayPin, LOW);
-          } else {
-              digitalWrite(kRelayPin, HIGH);
-          }
-        }
-      }
-    }
-    // close the connection:
-    client.stop();
-    Serial.println("Client Disconnected.");
-  }
-}
-*/
 
 void dumpIR()
 {
