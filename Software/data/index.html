@@ -4,44 +4,142 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="jquery-3.6.0.min.js"></script>
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        font-family: Arial, sans-serif;
+    }
+    .remote-control-container {
+        flex-grow: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+    .remote-control {
+        width: 250px;
+        border: 2px solid #333;
+        border-radius: 10px;
+        padding: 10px;
+        background-color: #f0f0f0;
+        text-align: center;
+        display: flex;
+        flex-wrap: wrap;
+    }
+    .remote-control button {
+        flex: 1 1 24%;
+        text-align: center;
+        margin: 5px;
+        width: 0px;
+        height: 40px;
+        font-size: 10px;
+    }
+    #log-container {
+        width: calc(100% - 340px); /* Subtract the width of the remote-control and its padding/margin */
+        max-width: 600px; /* Maximum width of the log container */
+        height: 100vh;
+        overflow-y: auto;
+        background-color: #000; /* Black background */
+        color: #00ff00; /* Bright green text, similar to Linux console */
+        font-family: monospace; /* Monospaced font for the console look */
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    #log {
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+        color: inherit;
+    }
+    #link-container {
+        background-color: #f8f9fa;
+        border-radius: 5px;
+        padding: 20px;
+        margin: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    #link-container h1 {
+        color: #007bff;
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+    #link-container p {
+        color: #212529;
+        font-size: 16px;
+        margin-top: 0;
+        margin-bottom: 8px;
+    }
+    #link-container ul {
+        list-style-type: none;
+        padding: 0;
+    }
+    #link-container li {
+        padding: 4px 0;
+    }
+    #link-container a {
+        color: #007bff;
+        text-decoration: none;
+        transition: color 0.2s ease-in-out;
+    }
+    #link-container a:hover {
+        color: #0056b3;
+        text-decoration: underline;
+    }
+
+    /* Responsive design for smaller screens */
+    @media (max-width: 767px) {
+        body {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .remote-control-container {
+            width: 100%;
+            padding: 10px;
+        }
+        #log-container {
+            width: 100%;
+            max-width: none;
+            height: 50vh; 
+            border-left: none;
+            border-top: 1px solid #ddd;
+        }
+    }
+</style>
 <title>ESP8266 Remote Control</title>
 <link rel="stylesheet" href="bootstrap.min.css">
 </head>
 <body>
-<div class="remote-control-container">
-    <h1>ESP8266 Remote Control</h1>
-    <style>
-        .remote-control-container {
-            position: absolute;
-            top: 50%; 
-            left: 50%; 
-            transform: translate(-50%, -50%); 
-        }
-
-        .remote-control {
-            width: 300px;
-            border: 2px solid #333;
-            border-radius: 10px;
-            padding: 10px;
-            background-color: #f0f0f0;
-            text-align: center;
-            display: flex;
-            flex-wrap: wrap;
-        }
-    
-        .remote-control button {
-            flex: 1 1 24%;
-            text-align: center;
-            margin: 5px;
-            width: 40px;
-            height: 40px;
-            font-size: 10px;
-        }
-    </style>
-    <div class="remote-control" id="remote-control"></div>
-
+    <div id="link-container">
+        <h1>ESP WEB UI</h1>
+        <p>The following pages are available:</p>
+        <ul>
+            <li><a href="/index.html">/index.html</a> - This page</li>
+            <li><a href="/files.html">/files.html</a> - Manage files on the server</li>
+            <li><a href="/upload">/upload</a> - Built-in file upload utility</li>
+            <li><a href="/ota">/ota</a> - For OTA update</li>
+            <li><a href="/pic">/pic</a> - Display a random pic</li>
+            <li><a href="/test">/test</a> - Debug function</li>
+        </ul>
+        
+        <p>The following services are available:</p>
+        <ul>
+            <li><a href="/sysinfo">/sysinfo</a> - Some system level information</li>
+            <li><a href="/list">/list</a> - Array of all files</li>
+            <li><a href="/api">/api</a> - API for GPIO/IR/Relay</li>
+        </ul>
+    </div>
+    <div class="remote-control-container">
+        <div class="remote-control" id="remote-control"></div>
+    </div>
+    <div id="log-container">
+        <pre id="log">日志信息将显示在这里...</pre>
+    </div>
     <script>
-
         function getParameterByName(name, url) {
             if (!url) url = window.location.href;
             name = name.replace(/[\[\]]/g, '\\$&');
@@ -72,7 +170,7 @@
                     button.css(buttonStyle);
                     $("#remote-control").append(button);
                 });
-    
+
                 $("#remote-control button").click(function() {
                     var protocol = $(this).data("protocol");
                     var keyValue = $(this).data("keyvalue");
@@ -89,7 +187,7 @@
             var esp8266IpAddress = window.location.hostname; 
             $.ajax({
                 type: "GET",
-                url: "http://" + esp8266IpAddress + "/data",
+                url: "http://" + esp8266IpAddress + "/api",
                 data: data,
                 success: function(response){
                     console.log("Data sent successfully");
@@ -100,140 +198,24 @@
             });
         }
 
-    </script>
-</div>
-<!-- 
-
-// 函数用于统计 $ 符号出现的次数和位置
-void findDollarPositions(String str, int& count, int positions[], int maxPositions) {
-    count = 0;
-
-    for (int i = 0; i < str.length(); i++) {
-        if (str.charAt(i) == '$') {
-            if (count < maxPositions) {
-                positions[count] = i;
-                count++;
+        function fetchAndAppendLogs() {
+            fetch('/logs').then(function(response) {
+            if (!response.ok) {
+            throw new Error('Network response was not ok');
             }
+            return response.text();
+        }).then(function(text) {
+            var logElement = document.getElementById('log');
+            logElement.textContent += text; 
+            logElement.scrollTop = logElement.scrollHeight; 
+        }).catch(function(error) {
+            console.error('There has been a problem with your fetch operation:', error);
+        });
         }
-    }
-}
 
-// 函数用于根据 $ 符号切割字符串并存储到数组中
-void splitString(String str, String substrings[], int positions[], int count) {
-    int start = 0;
-    for (int i = 0; i < count; i++) {
-        substrings[i] = str.substring(start, positions[i]);
-        start = positions[i] + 1;
-    }
-    substrings[count] = str.substring(start);
-}
+        setInterval(fetchAndAppendLogs, 1000); // 每秒更新一次日志
+    </script>
 
-
-    #define maxPositions  10  // 最大支持的参数
-    int positions[maxPositions];
-    int count;
-
-    // 统计 $ 符号出现的次数和位置
-    findDollarPositions(keyValue, count, positions, maxPositions);
-
-    // 输出 $ 符号出现的次数和位置
-    Serial.print("Number of $ symbols: ");
-    Serial.println(count);
-    Serial.print("Positions of $ symbols: ");
-    for (int i = 0; i < count; i++) {
-        Serial.print(positions[i]);
-        Serial.print(" ");
-    }
-    Serial.println();
-
-    // 创建存储小字符串的数组
-    String substrings[count + 1];
-
-    // 切割字符串并存储到数组中
-    splitString(keyValue, substrings, positions, count);
-
-    // 输出每个小字符串
-    for (int i = 0; i < count + 1; i++) {
-        Serial.print("SubString ");
-        Serial.print(i + 1);
-        Serial.print(": ");
-        Serial.println(substrings[i]);
-    }
-
-
-void handleRequest() {
-    if (server.hasArg("protocol") && server.hasArg("keyValue")) {
-        String protocol = server.arg("protocol");
-        String keyValue = server.arg("keyValue");
-        int index = keyValue.indexOf('$');
-        bool isMultiValue = false;
-        if (index != -1) {                                  // 確保找到了 $ 符號
-            String part1 = keyValue.substring(0, index);
-            String part2 = keyValue.substring(index + 1);
-            if (!part1.isEmpty() && !part2.isEmpty()) {     // 判斷切割後的部分是否為空
-                uint64_t value1 = part1.toInt();
-                uint64_t value2 = part2.toInt();
-                isMultiValue = true;
-            } 
-        } else {
-            uint64_t value1 = keyValue.toInt();
-            isMultiValue = false;
-        }
-      if (protocol == "Relay") {
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        sendRelay(keyValue);
-      } else if (protocol == "rGPIO"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        digitalRead(keyValue);
-      } else if (protocol == "wGPIO"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        digitalWrite(4, LOW);
-      } else if (protocol == "mGPIO"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        pinMode(4, keyValue);
-      } else if (protocol == "tGPIO"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        if(digitalRead(keyValue) == HIGH)
-            digitalWrite(keyValue, LOW);  
-        else               
-            digitalWrite(keyValue, HIGH);  
-      } else if (protocol == "NEC"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendNEC(keyValue);
-      } else if (protocol == "Sony"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendSony(keyValue);
-      } else if (protocol == "Sony38"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendSony38(keyValue);
-      } else if (protocol == "Panasonic"){
-        if (isMultiValue)
-            irsend.sendPanasonic(value1, value2);
-      } else if (protocol == "RC5"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendRC5(keyValue);
-      } else if (protocol == "RC6"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendRC6(keyValue);
-      } else if (protocol == "Sharp"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.Sharp(keyValue);
-      } else if (protocol == "JVC"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.JVC(keyValue);
-      } else if (protocol == "SAMSUNG"){
-        uint64_t keyValue = server.arg("keyValue").toInt();
-        irsend.sendSAMSUNG(keyValue);
-      } else {
-        server.send(400, "text/plain", "Unsupport protocol, please check!");
-        return;
-      }
-      server.send(200, "text/plain", "Request processed");
-    } else {
-      server.send(400, "text/plain", "Missing or invalid  parameter");
-    }
-  }
- -->
 </body>
 </html>
 
