@@ -20,8 +20,8 @@
     "key1": {
         "name": "Power",
         "enable": true,
-        "protocol": "IR",
-        "keyValue": "A1",
+        "protocol": "Panasonic",
+        "keyValue": "0x555A$0xF118688E",
         "style": {
             "background-color": "red",
             "color": "blue"
@@ -36,8 +36,8 @@
     "key3": {
         "name": "Source",
         "enable": true,
-        "protocol": "IR",
-        "keyValue": "C3",
+        "protocol": "RC5",
+        "keyValue": "0x65",
         "style": {
             "background-color": "#673ab7"
         }

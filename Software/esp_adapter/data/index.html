@@ -113,14 +113,14 @@
 <title>ESP8266 Remote Control</title>
 <link rel="stylesheet" href="bootstrap.min.css">
 </head>
-<body>
+<br>
     <div id="link-container">
         <h1>ESP WEB UI</h1>
         <p>The following pages are available:</p>
         <ul>
             <li><a href="/index.html">/index.html</a> - This page</li>
-            <li><a href="/files.html">/files.html</a> - Manage files on the server</li>
-            <li><a href="/upload">/upload</a> - Built-in file upload utility</li>
+            <li><a href="/files">/files</a> - Built-in FileManage utility</li>
+            <li><a href="/wifi">/wifi</a> - Add a new Wifi</li>
             <li><a href="/ota">/ota</a> - For OTA update</li>
             <li><a href="/pic">/pic</a> - Display a random pic</li>
             <li><a href="/test">/test</a> - Debug function</li>
@@ -136,8 +136,9 @@
     <div class="remote-control-container">
         <div class="remote-control" id="remote-control"></div>
     </div>
-    <br id="log-container">
-        <pre id="log">日志信息将显示在这里...</pre></br>
+    <div id="log-container">
+        <pre style="color: inherit;">日志信息将显示在这里...</pre>
+        <pre id="log"></pre>
     </div>
     <script>
         function getParameterByName(name, url) {
@@ -155,7 +156,7 @@
             console.log("use json file : " + jsonFileName);
         } else {
             jsonFileName = "keymap.json";
-            console.log('parameter map undefine! we will use default json filename : ' + jsonFileName);
+            console.log('parameter json undefine! we will use default json filename : ' + jsonFileName);
         }
 
         $(document).ready(function() {

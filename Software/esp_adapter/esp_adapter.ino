@@ -31,7 +31,7 @@
 #include <LittleFS.h>  // This file system is used.
 
 #include <CircularBuffer.hpp>  //For web console log
-// #include <ESP8266SmartConfig.h>
+
 // local time zone definition
 #define TIMEZONE "CST-8"
 
@@ -39,7 +39,8 @@
 #include "builtinfiles.h"
 
 //======================= feature enable ====================
-#define IsSupportWebUIFullLog   1  // 1：所有串口log会同步到WEB Console 0:仅IR Recv Dump log
+#define IsSupportWebUIFullLog   1  // 1：所有串口log会同步到WEB Console,可能会导致某些lib的DEBUG log无法打印，开发调试过程请勿置1
+                                   // 0: 仅IR Recv Dump log会同步到WEB Console
 #define IsSupportMultiWiFi      1
 #define IsESP8266_Heimei_Board  0 
 #define MAXSubParameterCount    3  // 最大子字符串个数
@@ -86,74 +87,15 @@ const uint8_t kTolerancePercentage = kTolerance;  // kTolerance is normally 25%
 const uint32_t kUartBaudRate = 115200;  
 
 //wifi STA PARAMETERS
-const char* defaultWifiList[][2] = {
-    {"EcologicalPark1", "1234568907"},  // When IsSupportMultiWiFi=0 only the first parameter will be used
+const char defaultWifiList[][2][32] = {
+    {"EcologicalPark1", "1234568907"},  // When IsSupportMultiWiFi=0, only the first item will be used
     {"EcologicalPark2", "1234568907"},
     {"TP-LINK_48D0", ""},
     {"ziroom709", "4001001111"}
 };
 String wifiConfigFileName = "/wifi_config.txt";
-char*** wifiList; // 使用malloc存储WiFi配置
 int numWiFi = 0; // 当前WiFi配置数目
-bool apAndSmartConfigMode = false;
-
-
-
-void saveWifiConfig(const char* fileName, String tmp_ssid , String tmp_password) {
-    File configFile = LittleFS.open(fileName, "a");
-    if (!configFile) {
-        Serial.println("Failed to open config file for writing");
-        return;
-    }
-    configFile.print(tmp_ssid);
-    configFile.print(",");
-    configFile.println(tmp_password);
-
-    configFile.close();
-}
-
-
-
-void loadWifiConfig(const char* fileName) {
-    File configFile = LittleFS.open(fileName, "r");
-    if (!configFile) {
-        Serial.println("Failed to open config file for reading");
-        return;
-    }
-
-    // 在加载新的WiFi配置前，清空原有的WiFi配置
-    cleanupWifiList();
-    numWiFi = 0;
-
-    // 读取配置文件，动态分配和扩展堆空间存储WiFi配置
-    while (configFile.available()) {
-        String line = configFile.readStringUntil('\n');
-        if (line.length() > 0) {
-            if( numWiFi == 0) {
-              wifiList[numWiFi] = (char**)malloc(line.length() * sizeof(char*)); // 分配内存存储WiFi名称和密码
-            } else {
-              wifiList = (char***)realloc(wifiList, line.length() * sizeof(char**));
-            }
-            int separatorIndex = line.indexOf(',');
-            if (separatorIndex != -1) {
-                
-                wifiList[numWiFi][0] = strdup(line.substring(0, separatorIndex).c_str());
-                wifiList[numWiFi][1] = strdup(line.substring(separatorIndex + 1).c_str());
-                numWiFi++;
-            }
-        }
-    }
-
-    configFile.close();
-}
-
-void cleanupWifiList() {
-    for (int i = 0; i < numWiFi; i++) {
-        free(wifiList[i]);
-    }
-}
-
-
+bool IsSmartConfigMode = false;
 
 
 //wifi AP PARAMETERS
@@ -191,7 +133,6 @@ const char* update_path = "/ota";
 const char* update_username = "admin";
 const char* update_password = "admin";
 
-
 //Web Parameters
 const char* www_username = "admin";
 const char* www_password = "admin";
@@ -205,17 +146,19 @@ CEC_Device cec_device(kCecPin);
 // BluetoothSerial SerialBT;
 #if defined(ESP8266)
 const char* HOSTNAME = "esp8266";
-ESP8266WiFiMulti wifiMulti;
+  #if IsSupportMultiWiFi
+  ESP8266WiFiMulti wifiMulti;
+  #endif
 ESP8266HTTPUpdateServer httpUpdater;
 #else
 const char* HOSTNAME = "esp32-c3";
-WiFiMulti wifiMulti;
+  #if IsSupportMultiWiFi
+  WiFiMulti wifiMulti;
+  #endif
 HTTPUpdateServer httpUpdater;
 #endif
-
 // Circular buffer for log storage
 CircularBuffer<char, 2048> logBuffer;
-
 class LoggingSerial : public HardwareSerial {
 public:
     LoggingSerial(int uart_nr) : HardwareSerial(uart_nr) {}
@@ -232,8 +175,8 @@ public:
         return HardwareSerial::write(buffer, size); // Also write to hardware serial
     }
 };
-
 LoggingSerial LogSerial(0);
+
 #if IsSupportWebUIFullLog
   #define Serial LogSerial
 #endif
@@ -259,6 +202,9 @@ int processKeyValue(String keyValue, uint64_t values[]);
 void splitString(String str, String substrings[], int positions[], int count);
 void findDollarPositions(String str, int& count, int positions[]);
 uint64_t parseStringtoUint64(String str);
+bool loadWifiConfigAndTryConnect(String fileName);
+void saveWifiConfig(String fileName, const char* tmp_ssid , const char* tmp_password);
+void handleAddWifi();
 
 // ==================== Main function declaration begins ====================
 
@@ -271,6 +217,7 @@ void setup() {
   // Perform a low level sanity checks that the compiler performs bit field
   // packing as we expect and Endianness is as we expect.
   assert(irutils::lowLevelSanityCheck() == 0);
+  Serial.println("");
   Serial.printf("Mounting the filesystem...\n");
   if (!LittleFS.begin()) {
     Serial.printf("could not mount the filesystem...\n");
@@ -292,52 +239,24 @@ void setup() {
   irrecv.setTolerance(kTolerancePercentage);  // Override the default tolerance.
   irrecv.enableIRIn();                        // Start the receiver
   irsend.begin();
-
-  Serial.printf("Starting WebServer example...\n");
-
-  delay(10000);                                 // wait fs mount
-  if (!LittleFS.exists(wifiConfigFileName)) {  // Write Default Wifi to ConfigFile 
-    Serial.println("The wifiConfigFile lost, we will create and write defaultWifiList to wifiConfigFile");
-    for (int i = 0; i < sizeof(defaultWifiList) / sizeof(defaultWifiList[0]); i++) {
-        saveWifiConfig(wifiConfigFileName.c_str(), defaultWifiList[i][0], defaultWifiList[i][1]);
+  
+  if (!LittleFS.exists(wifiConfigFileName)) {  // Write Default WifiList to ConfigFile 
+    uint16_t defaultWifiListCount = sizeof(defaultWifiList) / sizeof(defaultWifiList[0]);
+    Serial.printf("The wifiConfigFile lost, we will create and write %u defaultWifiList to wifiConfigFile %s", defaultWifiListCount, wifiConfigFileName.c_str());
+    for (uint16_t i = 0; i < defaultWifiListCount; i++) {
+        saveWifiConfig(wifiConfigFileName, defaultWifiList[i][0], defaultWifiList[i][1]);
     }
   }
-  loadWifiConfig(wifiConfigFileName.c_str());
 
+  Serial.println("Starting loading wifi config & connect to  wifi ...");
   WiFi.mode(WIFI_STA);                        // start to Connect to WiFi
   WiFi.setHostname(HOSTNAME);
   WiFi.onStationModeConnected(&onStationConnected);
   WiFi.onStationModeDisconnected(&onStationDisconnected);
   WiFi.onEvent(&handleWiFiEvent);
-#if IsSupportMultiWiFi
-  // Register multi WiFi networks
-  for (int i = 0; i < numWiFi; i++) {
-      wifiMulti.addAP(wifiList[i][0], wifiList[i][1]);
-  }
-  Serial.println("Try connecting to Multi Wifi...");
 
-  // Wait for wifi connection or timeout
-  unsigned long startAttemptTime = millis();
-  while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-      delay(500);
-      Serial.print(".");
-  }
-#else
-  Serial.printf("Try connecting to %s ", wifiList[0][0]);
-  WiFi.begin(wifiList[0][0], wifiList[0][1]);   //only use the first config
-  //WiFi.begin(defaultWifiList[i][0], defaultWifiList[i][1]);
-
-  unsigned long startAttemptTime = millis();
-
-  // Wait for wifi connection or timeout
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
-      delay(500);
-      Serial.print(".");
-  }
-#endif
-
-  if(WiFi.status() != WL_CONNECTED) {
-    Serial.println("\r\n Failed to connect wifi, We will start AP & SmartConfig ");
+  if(!loadWifiConfigAndTryConnect(wifiConfigFileName) || WiFi.status() != WL_CONNECTED) {
+    Serial.println("Failed to connect wifi, We will start AP");
     //Serial.println(WiFi.printDiag(Serial));
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(APip, APgateway, APsubnet);
@@ -346,10 +265,6 @@ void setup() {
     Serial.print("AP IP address: ");
     Serial.println(myIP);
     Serial.println();
-    Serial.println("Starting SmartConfig");
-    //SmartConfig.start();
-     WiFi.beginSmartConfig();
-    apAndSmartConfigMode = true;
   } else {
     Serial.print("setup(): WiFi Connected: ");
     Serial.println(WiFi.SSID());
@@ -385,7 +300,8 @@ void setup() {
   httpserver.on("/", HTTP_GET, handleRedirect);
   httpserver.on("/list", HTTP_GET, handleListFiles);
    // serve a built-in htm page
-  httpserver.on("/upload", handleUpload);
+  httpserver.on("/files", handleFileManager);
+  httpserver.on("/wifi", handleAddWifi);
   httpserver.onNotFound(handleNotFound);
   //enable CORS header in webserver results
   httpserver.enableCORS(true);
@@ -406,22 +322,19 @@ void setup() {
 
 void loop() {
   // Handle SmartConfig
-  //if (apAndSmartConfigMode && SmartConfig.process()) {
-  if (apAndSmartConfigMode && WiFi.smartConfigDone()) {
+  if (IsSmartConfigMode && WiFi.smartConfigDone()) {
       Serial.println("SmartConfig received");
       // Get and save the received WiFi credentials
-      // String tmp_ssid = SmartConfig.getSSID();
-      // String tmp_password = SmartConfig.getPassword();
       String tmp_ssid = WiFi.SSID();
       String tmp_password = WiFi.psk();
-      saveWifiConfig(wifiConfigFileName.c_str(), tmp_ssid.c_str(), tmp_password.c_str()); 
+      saveWifiConfig(wifiConfigFileName, tmp_ssid.c_str(), tmp_password.c_str()); 
 
       // Connect to the received WiFi
-#if IsSupportMultiWiFi
-      wifiMulti.addAP(tmp_ssid.c_str(), tmp_password.c_str());
-#elif
-      WiFi.begin(tmp_ssid, tmp_password);
-#endif
+// #if IsSupportMultiWiFi
+//       wifiMulti.addAP(tmp_ssid.c_str(), tmp_password.c_str());
+// #elif
+//       WiFi.begin(tmp_ssid, tmp_password);
+// #endif
   }
   if (Serial.available() > 0) {
     // 读取串口数据
@@ -506,17 +419,14 @@ String macToString(const unsigned char* mac) {
 }
 
 uint64_t parseStringtoUint64(String str) {
-    char *endptr;
     uint64_t value = 0;
+
     if (str.startsWith("0x") || str.startsWith("0X")) {
-        value = strtoull(str.c_str(), &endptr, 16);
+        value = strtoull(str.substring(2).c_str(), NULL, 16);
     } else {
-        value = strtoull(str.c_str(), &endptr, 10);
+        value = strtoull(str.c_str(), NULL, 10);
     }
-    if (*endptr != '\0') {
-        Serial.println("Error: Invalid string");
-        return UINT64_MAX; // 返回特殊值表示解析错误
-    }
+
     return value;
 }
 
@@ -603,11 +513,6 @@ void handleWiFiEvent(WiFiEvent_t event){
             Serial.println(WiFi.SSID());
             Serial.print("Event: IP Address: ");
             Serial.println(WiFi.localIP());
-            if(apAndSmartConfigMode) {  //stop AP and SmartConfig
-              WiFi.softAPdisconnect(true);
-              WiFi.mode(WIFI_STA);
-              WiFi.stopSmartConfig();
-            }
             break;
         case WIFI_EVENT_STAMODE_DHCP_TIMEOUT:
             break;
@@ -624,6 +529,79 @@ void handleWiFiEvent(WiFiEvent_t event){
         default:
             break;
    }
+}
+
+
+void saveWifiConfig(String fileName, const char* tmp_ssid , const char* tmp_password) {
+    File configFile = LittleFS.open(fileName, "a");
+    if (!configFile) {
+        Serial.println("Failed to open config file for writing");
+        return;
+    }
+    configFile.print(tmp_ssid);
+    configFile.print(",");
+    configFile.println(tmp_password);
+
+    configFile.close();
+}
+
+
+
+bool loadWifiConfigAndTryConnect(String fileName) {
+    bool hasItems = false;
+    File configFile = LittleFS.open(fileName, "r");
+    if (!configFile) {
+        Serial.println("Failed to open config file for loading");
+        return false;
+    }
+
+    numWiFi = 0;
+
+    // 读取配置文件，动态分配和扩展堆空间存储WiFi配置
+    while (configFile.available()) {
+        String line = configFile.readStringUntil('\n');
+        if (line.length() > 0) {
+            line.trim();
+            int separatorIndex = line.indexOf(',');
+            if (separatorIndex != -1) {
+                String ssid = line.substring(0, separatorIndex);
+                String psk  = line.substring(separatorIndex + 1);
+#if IsSupportMultiWiFi
+                wifiMulti.addAP(ssid.c_str(), psk.c_str());
+#else
+                WiFi.begin(ssid.c_str(), psk.c_str());   //only use the first item
+                break;
+#endif
+                hasItems = true;
+                numWiFi++;
+            }
+        }
+    }
+    if (!hasItems) {
+        Serial.println("Failed to load, There are no valid items in the config file");
+        configFile.close();
+        return false;
+    }
+#if IsSupportMultiWiFi
+    Serial.printf("Try connecting to Multi Wifi, numWiFi=%d...\r\n", numWiFi);
+
+    // Wait for wifi connection or timeout
+    unsigned long startAttemptTime = millis();
+    while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+        delay(500);
+        Serial.print(".");
+    }
+#else
+    Serial.printf("Try connecting to %s \r\n", wifiList[0][0]);
+    // Wait for wifi connection or timeout
+    unsigned long startAttemptTime = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+        delay(500);
+        Serial.print(".");
+    }
+#endif
+    configFile.close();
+    return true;
 }
 
 void printLocalTime()
@@ -703,7 +681,7 @@ void handleRedirect() {
   Serial.print("Url:");
   Serial.println(url);
 
-  if (!LittleFS.exists(url)) { url = "/upload"; }
+  if (!LittleFS.exists(url)) { url = "/file"; }
   //httpserver.redirect(url);
 
   httpserver.sendHeader("Location", url, true);
@@ -745,10 +723,25 @@ bool checkUserAuthentication() {
   //   return; // End the request if not authenticated
   // }
 
-
-void handleUpload() {
+void handleAddWifi() {
   if (httpserver.method() == HTTP_GET) {
-    httpserver.send(200, "text/html", FPSTR(uploadContent));
+    // 处理GET请求
+    httpserver.send(200, "text/html", FPSTR(WiFiHtml));
+  } else if (httpserver.method() == HTTP_POST) {
+    String ssid = httpserver.arg("ssid");
+    String password = httpserver.arg("password");
+    Serial.printf("Recv ssid:%s password:%s\n" , ssid.c_str(), password.c_str());
+    saveWifiConfig(wifiConfigFileName, ssid.c_str(), password.c_str());
+    httpserver.send(200, "text/plain", "Add Wifi item Successfully");
+    delay(5000);
+    ESP.restart();
+  }
+}
+
+
+void handleFileManager() {
+  if (httpserver.method() == HTTP_GET) {
+    httpserver.send(200, "text/html", FPSTR(FileManagerHtml));
   } else if (httpserver.method() == HTTP_POST) {
     HTTPUpload& upload = httpserver.upload();
     if (upload.status == UPLOAD_FILE_START) {
@@ -765,7 +758,7 @@ void handleUpload() {
       }
       file.close();
     } else if (upload.status == UPLOAD_FILE_WRITE) {
-      fs::File file = LittleFS.open(upload.filename, "a");
+      fs::File file = LittleFS.open(upload.filename, "w");
       if (file) {
         file.write(upload.buf, upload.currentSize);
         file.close();
@@ -777,7 +770,7 @@ void handleUpload() {
       httpserver.send(200, "text/html", "File was successfully uploaded!");
     }
   } else if (httpserver.method() == HTTP_DELETE) {
-    String filename = httpserver.arg("name"); // Assuming the file name is passed as a URL argument
+    String filename = httpserver.arg("delfile"); // Assuming the file name is passed as a URL argument
     if (!filename.startsWith("/")) {
       filename = "/" + filename;
     }
@@ -833,9 +826,9 @@ void handleAPI() {
       } else if (protocol == "Panasonic"){
         if (values_count > 1)
             irsend.sendPanasonic(values[0], values[1]);
-    /*  } else if (protocol == "RC5"){
+      } else if (protocol == "RC5"){
         irsend.sendRC5(values[0]);
-      } else if (protocol == "RC6"){
+     /* } else if (protocol == "RC6"){
         irsend.sendRC6(values[0]);
       } else if (protocol == "Sharp"){
         irsend.Sharp(values[0]);
