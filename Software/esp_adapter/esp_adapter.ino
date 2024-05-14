@@ -586,7 +586,7 @@ bool loadWifiConfigAndTryConnect(String fileName) {
 
     // Wait for wifi connection or timeout
     unsigned long startAttemptTime = millis();
-    while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < 10000) {
+    while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < numWiFi*2*5000) {
         delay(500);
         Serial.print(".");
     }
@@ -732,8 +732,8 @@ void handleAddWifi() {
     Serial.printf("Recv ssid:%s password:%s\n" , ssid.c_str(), password.c_str());
     saveWifiConfig(wifiConfigFileName, ssid.c_str(), password.c_str());
     httpserver.send(200, "text/plain", "Add Wifi item Successfully");
-    delay(5000);
-    ESP.restart();
+    // delay(5000);
+    // ESP.restart();
   }
 }
 

@@ -306,7 +306,7 @@ R"==(
             xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
             xhr.onload = function() {
                 if (xhr.status == 200) {
-                    alert("配置已写入");
+                    alert("配置已写入,请手动重启");
                 } else {
                     alert("配置写入失败");
                 }
