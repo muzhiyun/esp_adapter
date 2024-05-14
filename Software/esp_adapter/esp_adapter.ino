@@ -242,7 +242,7 @@ void setup() {
   
   if (!LittleFS.exists(wifiConfigFileName)) {  // Write Default WifiList to ConfigFile 
     uint16_t defaultWifiListCount = sizeof(defaultWifiList) / sizeof(defaultWifiList[0]);
-    Serial.printf("The wifiConfigFile lost, we will create and write %u defaultWifiList to wifiConfigFile %s", defaultWifiListCount, wifiConfigFileName.c_str());
+    Serial.printf("The wifiConfigFile lost, we will create and write %u defaultWifiList to wifiConfigFile %s\n", defaultWifiListCount, wifiConfigFileName.c_str());
     for (uint16_t i = 0; i < defaultWifiListCount; i++) {
         saveWifiConfig(wifiConfigFileName, defaultWifiList[i][0], defaultWifiList[i][1]);
     }
