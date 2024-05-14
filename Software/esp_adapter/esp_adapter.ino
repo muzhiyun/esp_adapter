@@ -55,11 +55,13 @@
   const uint16_t kIrRecvPin = 5;  
   const uint16_t kRelayPin = 13;
   const uint16_t kCecPin =  12;
+  const uint16_t kButtonPin = 2; 
   #else
   const uint16_t kIrSendPin = 2; 
   const uint16_t kIrRecvPin = 0;  
   const uint16_t kRelayPin = 4;
   const uint16_t kCecPin =  12;
+  const uint16_t kButtonPin = 14; 
   #endif
 #elif define(AirM2M_CORE_ESP32C3)
 const uint16_t kIrSendPin = 4;  
@@ -67,6 +69,7 @@ const uint16_t kIrSendPin = 4;
 const uint16_t kIrRecvPin = 8;  // 14 on a ESP32-C3 causes a boot loop.
 const uint16_t kRelayPin = 9;
 const uint16_t kCecPin =  7;
+const uint16_t kButtonPin = 14; 
 #endif
 
 
@@ -86,16 +89,22 @@ const uint8_t kTolerancePercentage = kTolerance;  // kTolerance is normally 25%
 //uart PARAMETERS
 const uint32_t kUartBaudRate = 115200;  
 
+//button for SmartConfig & Restart
+int buttonState = HIGH;   // 按鈕狀態
+unsigned long lastDebounceTime = 0;  // 上次按鈕讀取時間
+unsigned long debounceDelay = 50;    // 消除彈跳延遲時間
+unsigned long pressStartTime = 0;    // 按鈕按下開始時間
+
 //wifi STA PARAMETERS
 const char defaultWifiList[][2][32] = {
     {"EcologicalPark1", "1234568907"},  // When IsSupportMultiWiFi=0, only the first item will be used
     {"EcologicalPark2", "1234568907"},
-    {"TP-LINK_48D0", ""},
-    {"ziroom709", "4001001111"}
+    {"TP-LINK_48D0", ""}
 };
 String wifiConfigFileName = "/wifi_config.txt";
 int numWiFi = 0; // 当前WiFi配置数目
 bool IsSmartConfigMode = false;
+bool IsGOTIP = false;
 
 
 //wifi AP PARAMETERS
@@ -205,6 +214,7 @@ uint64_t parseStringtoUint64(String str);
 bool loadWifiConfigAndTryConnect(String fileName);
 void saveWifiConfig(String fileName, const char* tmp_ssid , const char* tmp_password);
 void handleAddWifi();
+void checkButton();
 
 // ==================== Main function declaration begins ====================
 
@@ -229,6 +239,7 @@ void setup() {
 
   cec_device.Initialize(CEC_PHYSICAL_ADDRESS, CEC_DEVICE_TYPE, true); // CEC init //Promiscuous mode
 
+  pinMode(kButtonPin, INPUT_PULLUP);
   pinMode(kRelayPin, OUTPUT);
   digitalWrite(kRelayPin, HIGH);  // Relay Pin init
 
@@ -321,12 +332,14 @@ void setup() {
 }
 
 void loop() {
+  if(!IsGOTIP)
+      checkButton();
   // Handle SmartConfig
   if (IsSmartConfigMode && WiFi.smartConfigDone()) {
-      Serial.println("SmartConfig received");
       // Get and save the received WiFi credentials
       String tmp_ssid = WiFi.SSID();
       String tmp_password = WiFi.psk();
+      Serial.printf("SmartConfig received, ssid:%s, password:%s\n", tmp_ssid.c_str(), tmp_password.c_str());
       saveWifiConfig(wifiConfigFileName, tmp_ssid.c_str(), tmp_password.c_str()); 
 
       // Connect to the received WiFi
@@ -418,6 +431,38 @@ String macToString(const unsigned char* mac) {
   return String(buf);
 }
 
+void checkButton() {
+  int reading = digitalRead(kButtonPin);
+
+  if (reading != buttonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > debounceDelay) {
+    if (reading != buttonState) {
+      buttonState = reading;
+
+      if (buttonState == LOW) {
+        pressStartTime = millis();
+      } else {
+        unsigned long pressDuration = millis() - pressStartTime;
+
+        if (pressDuration < 2000) { // 短按（小於2秒）
+          WiFi.softAPdisconnect(true);
+          WiFi.mode(WIFI_STA);
+          Serial.println("Starting SmartConfig...");
+          WiFi.beginSmartConfig();
+          IsSmartConfigMode = true;
+        } else { // 長按
+          Serial.println("Restarting...");
+          delay(3000); // 等待一秒確保重啟指令被處理
+          ESP.restart();
+        }
+      }
+    }
+  }
+}
+
 uint64_t parseStringtoUint64(String str) {
     uint64_t value = 0;
 
@@ -505,6 +550,7 @@ void handleWiFiEvent(WiFiEvent_t event){
             //printLocalTime();                      
             break;
          case WIFI_EVENT_STAMODE_DISCONNECTED:
+            IsGOTIP = false;
             break;
         case WIFI_EVENT_STAMODE_AUTHMODE_CHANGE:
             break;
@@ -513,6 +559,9 @@ void handleWiFiEvent(WiFiEvent_t event){
             Serial.println(WiFi.SSID());
             Serial.print("Event: IP Address: ");
             Serial.println(WiFi.localIP());
+            IsGOTIP = true;
+            if(IsSmartConfigMode)
+              WiFi.stopSmartConfig();
             break;
         case WIFI_EVENT_STAMODE_DHCP_TIMEOUT:
             break;
