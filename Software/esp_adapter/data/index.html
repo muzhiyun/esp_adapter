@@ -118,7 +118,6 @@
         <h1>ESP WEB UI</h1>
         <p>The following pages are available:</p>
         <ul>
-            <li><a href="/index.html">/index.html</a> - This page</li>
             <li><a href="/files">/files</a> - Built-in FileManage utility</li>
             <li><a href="/wifi">/wifi</a> - Add a new Wifi</li>
             <li><a href="/ota">/ota</a> - For OTA update</li>
@@ -213,6 +212,30 @@
             console.error('There has been a problem with your fetch operation:', error);
         });
         }
+
+        fetch('/list')
+        .then(response => response.json())
+        .then(data => {
+            data.forEach(file => {
+                if (file.name.endsWith('.htm') || file.name.endsWith('.html')) {
+                    const newListItem = document.createElement('li');
+                    const newLink = document.createElement('a');
+                    newLink.href = '/' + file.name;
+                    newLink.innerText = '/' + file.name;
+                    const description = document.createTextNode(' - ' + file.name);
+                    newListItem.appendChild(newLink);
+                    newListItem.appendChild(description);
+
+                    const pagesContainer = document.getElementById('link-container');
+                    const pagesList = pagesContainer.querySelector('ul:first-of-type');
+                    pagesList.appendChild(newListItem);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching data:', error);
+        });
+
 
         setInterval(fetchAndAppendLogs, 1000); // 每秒更新一次日志
     </script>
