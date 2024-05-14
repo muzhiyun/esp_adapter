@@ -557,7 +557,6 @@ bool loadWifiConfigAndTryConnect(String fileName) {
 
     numWiFi = 0;
 
-    // 读取配置文件，动态分配和扩展堆空间存储WiFi配置
     while (configFile.available()) {
         String line = configFile.readStringUntil('\n');
         if (line.length() > 0) {

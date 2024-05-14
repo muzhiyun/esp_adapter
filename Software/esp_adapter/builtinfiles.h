@@ -93,6 +93,7 @@ R"==(
         }
 
         #file-upload input[type="file"] {
+            display: none;
         }
 
         #file-upload label {
@@ -133,7 +134,8 @@ R"==(
     <div id='zone'>Drop files here for upload...</div>
 
     <div id="file-upload">
-        <input type="file" id="file-input name="name">
+        <input type="file" id="file-input">
+        <label for="file-input">Choose File</label>
         <button id="upload-button">Upload</button>
     </div>
 
