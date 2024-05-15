@@ -201,6 +201,10 @@ R"==(
 
 
         function uploadFiles(files) {
+            var uploadBtn = document.getElementById('file-upload-btn');
+            uploadBtn.innerText = 'Uploading...Please wait';
+            uploadBtn.disabled = true;
+
             var formData = new FormData();
             for (var i = 0; i < files.length; i++) {
                 formData.append('file', files[i], files[i].name);
@@ -219,8 +223,13 @@ R"==(
                 .catch(function (error) {
                     console.error('Error:', error);
                     window.alert('Upload failed.');
-                });
+                })
+                .finally(function () {
+                    uploadBtn.innerText = 'Upload Files';
+                    uploadBtn.disabled = false;
+            });
         }
+
 
         var z = document.getElementById('zone');
         z.addEventListener('dragenter', dragHelper, false);
