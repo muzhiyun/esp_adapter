@@ -87,37 +87,30 @@ R"==(
             background-color: #e0e0e0;
         }
 
-        #file-upload {
+        .file-upload-wrapper {
+            position: relative;
             margin-top: 20px;
+        }
+
+        .file-upload-input {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        .file-upload-button {
+            display: block;
+            width: 100%;
+            padding: 10px;
             text-align: center;
-        }
-
-        #file-upload input[type="file"] {
-            display: none;
-        }
-
-        #file-upload label {
-            background-color: #007bff;
+            background: #007bff;
             color: white;
-            padding: 10px 100px;
-            cursor: pointer;
-        }
-
-        #file-upload label:hover {
-            background-color: #0056b3;
-        }
-
-        #upload-button {
-            background-color: #28a745;
-            color: white;
-            padding: 10px 15px;
-            cursor: pointer;
             border: none;
-            margin-top: 10px;
+            border-radius: 5px;
+            cursor: pointer;
         }
 
-        #upload-button:hover {
-            background-color: #218838;
+        .file-upload-button:hover {
+            background: #0056b3;
         }
     </style>
 </head>
@@ -133,13 +126,25 @@ R"==(
 
     <div id='zone'>Drop files here for upload...</div>
 
-    <div id="file-upload">
-        <input type="file" id="file-input">
-        <label for="file-input">Choose File</label>
-        <button id="upload-button">Upload</button>
+    <div class="file-upload-wrapper">
+        <input type="file" id="file-upload" class="file-upload-input" multiple>
+        <button type="button" class="file-upload-button" id="file-upload-btn">Upload Files</button>
     </div>
 
     <script>
+        // allow drag&drop of file objects 
+        function dragHelper(e) {
+            e.stopPropagation();
+            e.preventDefault();
+        }
+
+        // allow drag&drop of file objects 
+        function dropped(e) {
+            dragHelper(e);
+            var fls = e.dataTransfer.files;
+            uploadFiles(fls);
+        }
+
         // Load and display all files after page loading has finished
         window.addEventListener("load", function () {
             fetch('/list')
@@ -198,45 +203,37 @@ R"==(
         function uploadFiles(files) {
             var formData = new FormData();
             for (var i = 0; i < files.length; i++) {
-                formData.append('file', files[i], '/' + files[i].name);
+                formData.append('file', files[i], files[i].name);
             }
-            fetch('/files', { method: 'POST', body: formData }).then(function () {
-                window.alert('done.');
-            });
-        }
-
-        function handleFileSelect(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            var files = e.target.files || e.dataTransfer.files;
-            uploadFiles(files);
-        }
-
-        function handleFileDrop(e) {
-            e.stopPropagation();
-            e.preventDefault();
-            var files = e.dataTransfer.files;
-            uploadFiles(files);
-        }
-        
-        // allow drag&drop of file objects 
-        function dragHelper(e) {
-            e.stopPropagation();
-            e.preventDefault();
+            fetch('/files', { method: 'POST', body: formData })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.text();
+                })
+                .then(function () {
+                    window.alert('Upload successful.');
+                    document.location.reload(false); 
+                })
+                .catch(function (error) {
+                    console.error('Error:', error);
+                    window.alert('Upload failed.');
+                });
         }
 
         var z = document.getElementById('zone');
         z.addEventListener('dragenter', dragHelper, false);
         z.addEventListener('dragover', dragHelper, false);
-        z.addEventListener('drop', handleFileDrop, false);
+        z.addEventListener('drop', dropped, false);
 
-        var fileInput = document.getElementById('file-input');
-        fileInput.addEventListener('change', handleFileSelect, false);
-
-        var uploadButton = document.getElementById('upload-button');
-        uploadButton.addEventListener('click', function() {
-            var files = fileInput.files;
-            uploadFiles(files);
+        document.addEventListener('DOMContentLoaded', function() {
+            var uploadBtn = document.getElementById('file-upload-btn');
+            var fileInput = document.getElementById('file-upload');
+            uploadBtn.addEventListener('click', function() {
+                var files = fileInput.files;
+                uploadFiles(files);
+            });
         });
     </script>
 </body>

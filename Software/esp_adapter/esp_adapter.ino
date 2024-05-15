@@ -11,6 +11,7 @@
 #include <IRremoteESP8266.h>
 #include <IRsend.h>
 #include <time.h>
+#include <map>
 #if defined(ESP8266)
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
@@ -44,6 +45,7 @@
 #define IsSupportMultiWiFi      1
 #define IsESP8266_Heimei_Board  0 
 #define MAXSubParameterCount    3  // 最大子字符串个数
+#define MAXUartCommandWaitTime  3000
 
 
 
@@ -90,21 +92,15 @@ const uint8_t kTolerancePercentage = kTolerance;  // kTolerance is normally 25%
 const uint32_t kUartBaudRate = 115200;  
 
 //button for SmartConfig & Restart
-int buttonState = HIGH;   // 按鈕狀態
-unsigned long lastDebounceTime = 0;  // 上次按鈕讀取時間
-unsigned long debounceDelay = 50;    // 消除彈跳延遲時間
-unsigned long pressStartTime = 0;    // 按鈕按下開始時間
+unsigned long debounceDelay = 500;    // 消除彈跳延遲時間
 
 //wifi STA PARAMETERS
 const char defaultWifiList[][2][32] = {
-    {"EcologicalPark1", "1234568907"},  // When IsSupportMultiWiFi=0, only the first item will be used
-    {"EcologicalPark2", "1234568907"},
+    {"ziroom709", "4001001111"},  // When IsSupportMultiWiFi=0, only the first item will be used
     {"TP-LINK_48D0", ""}
 };
 String wifiConfigFileName = "/wifi_config.txt";
 int numWiFi = 0; // 当前WiFi配置数目
-bool IsSmartConfigMode = false;
-bool IsGOTIP = false;
 
 
 //wifi AP PARAMETERS
@@ -145,6 +141,62 @@ const char* update_password = "admin";
 //Web Parameters
 const char* www_username = "admin";
 const char* www_password = "admin";
+
+enum NetStatus {
+  STA_MODE,
+  STA_SC_MODE,
+  AP_MODE
+};
+
+NetStatus currentNetStatus;
+
+enum CommandType {
+  Relay = 0x0,
+  System = 0x1,
+  wGPIO,
+  rGPIO,
+  mGPIO, 
+  tGPIO,   
+  IR_NEC,
+  IR_Sony,
+  IR_Sony38,
+  IR_Panasonic,
+  IR_RC5,
+  IR_RC6,
+  IR_Sharp,
+  IR_JVC,
+  IR_SAMSUNG,
+  CEC_Send,
+  IP_Get
+};
+
+std::map<String, CommandType> commandMap = {
+  {"Relay", Relay},
+  {"System", System},
+  {"wGPIO", wGPIO},
+  {"rGPIO", rGPIO},
+  {"mGPIO", mGPIO},
+  {"tGPIO", tGPIO},
+  {"NEC", IR_NEC},
+  {"Sony", IR_Sony},
+  {"Sony38", IR_Sony38},
+  {"Panasonic", IR_Panasonic},
+  {"RC5", IR_RC5},
+  {"RC6", IR_RC6},
+  {"Sharp", IR_Sharp},
+  {"JVC", IR_JVC},
+  {"SAMSUNG", IR_SAMSUNG},
+  {"CEC_Send", CEC_Send},
+  {"IP_Get", IP_Get}
+};
+
+CommandType stringToCommandType(const String& str) {
+  if (commandMap.find(str) != commandMap.end()) {
+    return commandMap[str];
+  } else {
+    return static_cast<CommandType>(-1);
+  }
+}
 
 // ==================== begin of global class ====================
 IRsend irsend(kIrSendPin);  // Set the GPIO to be used to sending the message.
@@ -206,8 +258,10 @@ void onStationDisconnected(const WiFiEventStationModeDisconnected& evt);
 void handleWiFiEvent(WiFiEvent_t event);
 void handleRedirect();
 void handleListFiles();
-void handleAPI();
-int processKeyValue(String keyValue, uint64_t values[]);
+void handleHttpAPI();
+void handleUartCommand();
+bool handleAPI(String protocol, int args_count, uint64_t args[MAXSubParameterCount], String message);
+int parseKeyValue(String keyValue, uint64_t args[]);
 void splitString(String str, String substrings[], int positions[], int count);
 void findDollarPositions(String str, int& count, int positions[]);
 uint64_t parseStringtoUint64(String str);
@@ -215,6 +269,9 @@ bool loadWifiConfigAndTryConnect(String fileName);
 void saveWifiConfig(String fileName, const char* tmp_ssid , const char* tmp_password);
 void handleAddWifi();
 void checkButton();
+void handleFileManagerShow();
+void handleFileManagerDelete();
+void handleFileManagerUpload();
 
 // ==================== Main function declaration begins ====================
 
@@ -228,6 +285,7 @@ void setup() {
   // packing as we expect and Endianness is as we expect.
   assert(irutils::lowLevelSanityCheck() == 0);
   Serial.println("");
+  Serial.printf("The last reset reason: %s \n", ESP.getResetReason().c_str());
   Serial.printf("Mounting the filesystem...\n");
   if (!LittleFS.begin()) {
     Serial.printf("could not mount the filesystem...\n");
@@ -268,7 +326,7 @@ void setup() {
 
   if(!loadWifiConfigAndTryConnect(wifiConfigFileName) || WiFi.status() != WL_CONNECTED) {
     Serial.println("Failed to connect wifi, We will start AP");
-    //Serial.println(WiFi.printDiag(Serial));
+    WiFi.printDiag(Serial);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(APip, APgateway, APsubnet);
     WiFi.softAP(APssid, APpassword);
@@ -302,7 +360,7 @@ void setup() {
     // UPLOAD and DELETE of files in the file system using a request handler.
   //httpserver.addHandler(new FileServerHandler());
   httpserver.on("/test", HTTP_GET, handleTest);
-  httpserver.on("/api", HTTP_GET, handleAPI);
+  httpserver.on("/api", HTTP_GET, handleHttpAPI);
   httpserver.on("/sysinfo", HTTP_GET, handleSysInfo);
   httpserver.on("/logs", HTTP_GET, handleGetLogs);
   httpserver.on("/pic", HTTP_GET, handleGraph);
@@ -311,7 +369,11 @@ void setup() {
   httpserver.on("/", HTTP_GET, handleRedirect);
   httpserver.on("/list", HTTP_GET, handleListFiles);
    // serve a built-in htm page
-  httpserver.on("/files", handleFileManager);
+  httpserver.on("/files", HTTP_GET, handleFileManagerShow);
+  httpserver.on("/files", HTTP_DELETE, handleFileManagerDelete);
+  //upload will be called multiple times and we have to return 200 as soon as possible, 
+  //otherwise the upload will not continue and we will only get the UPLOAD_FILE_END status and an incomplete file
+  httpserver.on("/files", HTTP_POST, [](){ httpserver.send(200);}, handleFileManagerUpload);  
   httpserver.on("/wifi", handleAddWifi);
   httpserver.onNotFound(handleNotFound);
   //enable CORS header in webserver results
@@ -332,10 +394,10 @@ void setup() {
 }
 
 void loop() {
-  if(!IsGOTIP)
+  if(currentNetStatus == AP_MODE)
       checkButton();
   // Handle SmartConfig
-  if (IsSmartConfigMode && WiFi.smartConfigDone()) {
+  if (currentNetStatus == STA_SC_MODE && WiFi.smartConfigDone()) {
       // Get and save the received WiFi credentials
       String tmp_ssid = WiFi.SSID();
       String tmp_password = WiFi.psk();
@@ -350,68 +412,12 @@ void loop() {
 // #endif
   }
   if (Serial.available() > 0) {
-    // 读取串口数据
-    String received = Serial.readString();
-    unsigned char buffer[3];
-
-    // 去除可能的空白字符
-    received.trim();
-    Serial.println(received);
-    if (received == "ac_reboot") {
-      Serial.println("ac_reboot ack");
-      digitalWrite(kRelayPin, LOW);
-      delay(2000);  // wait for 2s
-      digitalWrite(kRelayPin, HIGH);
-    } else if (received == "ac_trigger") {                                //
-      if(digitalRead(kRelayPin) == HIGH )
-      {
-        Serial.println("ac_trigger low ack");
-        digitalWrite(kRelayPin, LOW);
-      } else {
-        Serial.println("ac_trigger high ack");
-        digitalWrite(kRelayPin, HIGH);
-      }
-    } else if (received == "ac_on") {                                     //
-      Serial.println("ac_on ack");
-      digitalWrite(kRelayPin, HIGH);
-    } else if (received == "ac_off") {                                    //
-      Serial.println("ac_off ack");
-      digitalWrite(kRelayPin, LOW);
-    } else if (received == "rc_power_trigger") {                          //
-      Serial.println("rc_power_trigger ack");
-      irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-    } else if (received == "stress_test") {                               //
-      Serial.println("stress_test ack");
-      irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-      delay(2000);
-      irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-      delay(2000);
-      irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-      delay(2000);
-      irsend.sendPanasonic(ksharpRcPowerAddress, ksharpRcPowerCommand);
-      delay(2000);
-    } else if(received == "cec_test") {
-      buffer[0] = 0x36;
-			cec_device.TransmitFrame(4, buffer, 1);
-    } else if (received == "VestelPower") {
-      irsend.sendRC5(kVestelRcPowerdata);
-      Serial.println("VestelPower ack");
-    }else if (received == "VestelExit") {
-      irsend.sendRC5(kVestelRcExitdata);
-      Serial.println("VestelExit ack");
-    }else if (received == "VestelNetflix") {
-      irsend.sendRC5(kVestelRcNetflixdata);
-      Serial.println("VestelNetflix ack");
-    }else if (received == "VestelEnter") {
-      irsend.sendRC5(kVestelRcEnterdata);
-      Serial.println("VestelEnter ack");
-    }
+    handleUartCommand();
   }
   cec_device.Run();
-  //if(WiFi.status() == WL_CONNECTED) {
-    httpserver.handleClient();
-    MDNS.update();
-  //}
+  httpserver.handleClient();
+  MDNS.update();
+
 
   dumpIR();
 
@@ -432,32 +438,30 @@ String macToString(const unsigned char* mac) {
 }
 
 void checkButton() {
-  int reading = digitalRead(kButtonPin);
-
-  if (reading != buttonState) {
-    lastDebounceTime = millis();
-  }
-
-  if ((millis() - lastDebounceTime) > debounceDelay) {
-    if (reading != buttonState) {
-      buttonState = reading;
-
-      if (buttonState == LOW) {
-        pressStartTime = millis();
-      } else {
-        unsigned long pressDuration = millis() - pressStartTime;
-
-        if (pressDuration < 2000) { // 短按（小於2秒）
-          WiFi.softAPdisconnect(true);
-          WiFi.mode(WIFI_STA);
-          Serial.println("Starting SmartConfig...");
-          WiFi.beginSmartConfig();
-          IsSmartConfigMode = true;
-        } else { // 長按
-          Serial.println("Restarting...");
-          delay(3000); // 等待一秒確保重啟指令被處理
-          ESP.restart();
-        }
+  unsigned long pressStartTime = 0;
+  unsigned long pressDuration = 0;
+  if (digitalRead(kButtonPin) == LOW) {
+    pressStartTime = millis(); 
+    Serial.println("Button pressed! Keep holding...");
+    while (digitalRead(kButtonPin) == LOW) {
+    }
+    pressDuration = millis() - pressStartTime;
+    Serial.print("Button released! Press duration: ");
+    Serial.print(pressDuration);
+    Serial.println(" ms");
+    if (pressDuration > debounceDelay) {
+      if(pressDuration < 5000) { // 短按
+        if(currentNetStatus == AP_MODE) {
+	        WiFi.softAPdisconnect(true);
+	        WiFi.mode(WIFI_STA);
+	        Serial.println("Starting SmartConfig...");
+	        WiFi.beginSmartConfig();
+		currentNetStatus = STA_SC_MODE;
+          }
+      } else { // 長按
+        Serial.println("Restarting...");
+        delay(3000); // 等待確保重啟指令被處理
+        ESP.restart();
       }
     }
   }
@@ -496,9 +500,9 @@ void splitString(String str, String substrings[], int positions[], int count) {
     substrings[count] = str.substring(start);
 }
 
-int processKeyValue(String keyValue, uint64_t values[]) {
+int parseKeyValue(String keyValue, uint64_t args[]) {
     if (keyValue.length() == 0) {  // 处理空字符串的情况
-        values[0] = 0;
+        args[0] = 0;
         return 1;
     }
 
@@ -510,10 +514,10 @@ int processKeyValue(String keyValue, uint64_t values[]) {
 
     int i;
     for (i = 0; i <= count; i++) {
-        values[i] = parseStringtoUint64(substrings[i]);
+        args[i] = parseStringtoUint64(substrings[i]);
     }
     for (; i < MAXSubParameterCount; i++) {
-        values[i] = UINT64_MAX; // 将剩余的元素设置为特殊值
+        args[i] = UINT64_MAX; // 将剩余的元素设置为特殊值
     }
     return count + 1; // 返回实际解析出的子字符串数量
 }
@@ -550,7 +554,6 @@ void handleWiFiEvent(WiFiEvent_t event){
             //printLocalTime();                      
             break;
          case WIFI_EVENT_STAMODE_DISCONNECTED:
-            IsGOTIP = false;
             break;
         case WIFI_EVENT_STAMODE_AUTHMODE_CHANGE:
             break;
@@ -559,9 +562,10 @@ void handleWiFiEvent(WiFiEvent_t event){
             Serial.println(WiFi.SSID());
             Serial.print("Event: IP Address: ");
             Serial.println(WiFi.localIP());
-            IsGOTIP = true;
-            if(IsSmartConfigMode)
+            if(currentNetStatus == STA_SC_MODE) {
               WiFi.stopSmartConfig();
+              currentNetStatus = STA_MODE;
+            }
             break;
         case WIFI_EVENT_STAMODE_DHCP_TIMEOUT:
             break;
@@ -635,7 +639,7 @@ bool loadWifiConfigAndTryConnect(String fileName) {
 
     // Wait for wifi connection or timeout
     unsigned long startAttemptTime = millis();
-    while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < numWiFi*2*5000) {
+    while (wifiMulti.run() != WL_CONNECTED && millis() - startAttemptTime < (long unsigned int)numWiFi*2*5000) {
         delay(500);
         Serial.print(".");
     }
@@ -729,7 +733,13 @@ void handleRedirect() {
   Serial.print("Url:");
   Serial.println(url);
 
-  if (!LittleFS.exists(url)) { url = "/file"; }
+  if (!LittleFS.exists(url)) {
+    if(currentNetStatus == STA_MODE) {
+      url = "/file";
+    } else {
+      url = "/wifi";
+    } 
+  }
   //httpserver.redirect(url);
 
   httpserver.sendHeader("Location", url, true);
@@ -786,119 +796,228 @@ void handleAddWifi() {
   }
 }
 
-
-void handleFileManager() {
-  if (httpserver.method() == HTTP_GET) {
-    httpserver.send(200, "text/html", FPSTR(FileManagerHtml));
-  } else if (httpserver.method() == HTTP_POST) {
-    HTTPUpload& upload = httpserver.upload();
-    if (upload.status == UPLOAD_FILE_START) {
-      String filename = upload.filename;
-      if (!filename.startsWith("/")) {
-        filename = "/" + filename;
-      }
-      Serial.print("Handle File Upload Name: ");
-      Serial.println(filename);
-      fs::File file = LittleFS.open(filename, "w");
-      if (!file) {
-        Serial.println("Failed to open file for writing");
-        return;
-      }
-      file.close();
-    } else if (upload.status == UPLOAD_FILE_WRITE) {
-      fs::File file = LittleFS.open(upload.filename, "w");
-      if (file) {
-        file.write(upload.buf, upload.currentSize);
-        file.close();
-      } else {
-        Serial.println("Failed to open file for appending");
-      }
-    } else if (upload.status == UPLOAD_FILE_END) {
-      Serial.println("Upload Finished");
-      httpserver.send(200, "text/html", "File was successfully uploaded!");
-    }
-  } else if (httpserver.method() == HTTP_DELETE) {
-    String filename = httpserver.arg("delfile"); // Assuming the file name is passed as a URL argument
-    if (!filename.startsWith("/")) {
-      filename = "/" + filename;
-    }
-    if (LittleFS.remove(filename)) {
-      Serial.println("File Deleted Successfully");
-      httpserver.send(200, "text/plain", "File Deleted Successfully");
-    } else {
-      Serial.println("File Deletion Failed");
-      httpserver.send(500, "text/plain", "File Deletion Failed");
-    }
+void handleFileManagerShow() {
+  httpserver.send(200, "text/html", FPSTR(FileManagerHtml));
+}
+void handleFileManagerDelete() {
+  String filename = httpserver.arg("delfile"); // Assuming the file name is passed as a URL argument
+  if (!filename.startsWith("/")) {
+    filename = "/" + filename;
+  }
+  if (LittleFS.remove(filename)) {
+    Serial.println("File Deleted Successfully");
+    httpserver.send(200, "text/plain", "File Deleted Successfully");
   } else {
-    // Handle other HTTP methods if needed
-    httpserver.send(405, "text/plain", "Method Not Allowed");
+    Serial.println("File Deletion Failed");
+    httpserver.send(500, "text/plain", "File Deletion Failed");
+  }
+}
+
+void handleFileManagerUpload() {
+  static fs::File file;
+  static String filename;
+  HTTPUpload& upload = httpserver.upload();
+  filename = upload.filename;
+  if (!filename.startsWith("/")) {
+    filename = "/" + filename;
+  }
+  Serial.print("Handle File Upload Name: ");
+  Serial.println(filename);
+  if (upload.status == UPLOAD_FILE_START) {
+    Serial.println("start uploading");
+    file = LittleFS.open(filename, "w"); 
+    if (!file) {
+      Serial.println("Failed to open file for writing");
+      return;
+    }
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (file) {
+      Serial.println("still uploading");
+      file.write(upload.buf, upload.currentSize); 
+    } else {
+      Serial.println("Failed to open file for appending");
+    }
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (!file) {      //for handle too small file
+      Serial.println("handle too small file case");
+      file = LittleFS.open(filename, "w");
+      if (file) {
+        file.write(upload.buf, upload.currentSize); 
+      } else {
+        Serial.println("Failed to open file for writing at end");
+      }
+    }
+    if (file) {
+      file.close(); // Close the file when upload is finished
+    }
+    Serial.println("Upload Finished");
   }
 }
 
 
+void handleUartCommand() {
 
-void handleAPI() {
-    if (httpserver.hasArg("protocol") && httpserver.hasArg("keyValue")) {
+  String data = "";
+  unsigned long startTime = millis();
+  String protocol = "";
+  int args_count = 0;
+  uint64_t args[MAXSubParameterCount] = {0};
+  bool receivedNewline = false;
+
+  //loop for recv command until timeout or newline
+  while (millis() - startTime < MAXUartCommandWaitTime && !receivedNewline) {
+    if (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\n') {
+        receivedNewline = true;
+      } else {
+        data += c;
+      }
+    }
+  }
+
+  if (!receivedNewline) {
+    Serial.println("Receiving input timed out, please enter a complete command within" + String(MAXUartCommandWaitTime) + "ms and press Enter.");
+    return; 
+  }
+  
+  int index = 0;
+  args_count = 0;
+  int lastSpaceIndex = -1;
+  data.trim(); 
+  while (index < data.length()) {
+    int spaceIndex = data.indexOf(' ', lastSpaceIndex + 1);
+    if (spaceIndex == -1) {
+      spaceIndex = data.length();
+    }
+
+    String param = data.substring(lastSpaceIndex + 1, spaceIndex);
+    param.trim(); 
+    if (args_count == 0) {
+      protocol = param;
+    } else {
+      args[args_count - 1] = parseStringtoUint64(param);
+    }
+    args_count++;
+    lastSpaceIndex = spaceIndex;
+    if (spaceIndex == data.length()) {
+      break; 
+    }
+  }
+  args_count = args_count - 1;  //exclude protocol
+
+  Serial.printf("handleUartCommand data=%s protocol=%s args_count=%d \n", data.c_str(), protocol.c_str(), args_count);
+  for (int i = 0; i < args_count; i++) {
+    Serial.printf("args[%d]: 0x%llx", i, args[i]);
+  }
+  String message = "";
+  if (handleAPI(protocol, args_count, args, message)){
+    Serial.printf("Request processed. %s\n", message.c_str());
+  } else {
+    Serial.println("Unsupport protocol, please check! eg.\"wGPIO 24 1\" to write GPIO24 to high");
+  }
+  return ;
+}
+
+void handleHttpAPI() {
+  if (httpserver.hasArg("protocol") && httpserver.hasArg("keyValue")) {
       String protocol = httpserver.arg("protocol");
       String keyValue = httpserver.arg("keyValue");
-      uint64_t values[MAXSubParameterCount];
-      int values_count = processKeyValue(keyValue, values);
-      Serial.printf("handleAPI  protocol=%s keyValue=%s  values_count=%d \n", protocol.c_str(), keyValue.c_str(), values_count);
-      for (int i = 0; i < values_count; i++) {
-          if (values[i] != UINT64_MAX) {
-              Serial.printf("Value %d: 0x%llx\n", i, values[i]);
+      uint64_t args[MAXSubParameterCount];
+      int args_count = parseKeyValue(keyValue, args);
+      Serial.printf("handleHttpAPI protocol=%s keyValue=%s args_count=%d \n", protocol.c_str(), keyValue.c_str(), args_count);
+      for (int i = 0; i < args_count; i++) {
+          if (args[i] != UINT64_MAX) {
+              Serial.printf("Value %d: 0x%llx\n", i, args[i]);
           } else {
               Serial.println("Value " + String(i) + ": Invalid/Unused");
           }
       }
-
-      if (protocol == "Relay") {
-        digitalWrite(kRelayPin, values[0]);
-      } else if (protocol == "rGPIO"){
-        digitalRead(values[0]);            //todo:we need return the result
-      } else if (protocol == "wGPIO"){
-        digitalWrite(values[0], LOW);
-      } else if (protocol == "mGPIO"){
-        pinMode(values[0], values[1]);
-      } else if (protocol == "tGPIO"){
-        if(digitalRead(values[0]) == HIGH)
-            digitalWrite(values[0], LOW);  
-        else               
-            digitalWrite(values[0], HIGH);  
-     /* } else if (protocol == "NEC"){
-        irsend.sendNEC(values[0]);
-      } else if (protocol == "Sony"){
-        irsend.sendSony(values[0]);
-      } else if (protocol == "Sony38"){
-        irsend.sendSony38(values[0]);*/
-      } else if (protocol == "Panasonic"){
-        if (values_count > 1)
-            irsend.sendPanasonic(values[0], values[1]);
-      } else if (protocol == "RC5"){
-        irsend.sendRC5(values[0]);
-     /* } else if (protocol == "RC6"){
-        irsend.sendRC6(values[0]);
-      } else if (protocol == "Sharp"){
-        irsend.Sharp(values[0]);
-      } else if (protocol == "JVC"){
-        irsend.JVC(values[0]);
-      } else if (protocol == "SAMSUNG"){
-        irsend.sendSAMSUNG(values[0]);*/
+      String message = "";
+      if (handleAPI(protocol, args_count, args, message)){
+        httpserver.send(200, "text/plain", "Request processed");
+        Serial.println("Request processed");
       } else {
         httpserver.send(400, "text/plain", "Unsupport protocol, please check!");
         Serial.println("Unsupport protocol, please check!");
         return;
       }
-      httpserver.send(200, "text/plain", "Request processed");
-      Serial.println("Request processed");
-    } else {
+  } else {
       httpserver.send(400, "text/plain", "Missing or invalid  parameter");
       Serial.println("Missing or invalid  parameter");
-    }
   }
+}
 
+bool handleAPI(String protocol, int args_count, uint64_t args[MAXSubParameterCount], String message) {
 
-
+  switch (stringToCommandType(protocol)) {
+    case Relay:
+        digitalWrite(kRelayPin, args[0]);
+        break;
+    case System:
+        message = "ESP Reboot...";
+        ESP.restart(); // TODO: Add more system functions
+        break;
+    case rGPIO:
+        message = String(digitalRead(args[0])); // TODO: We need to return the result
+        break;
+    case wGPIO:
+        digitalWrite(args[0], LOW);
+        break;
+    case mGPIO:
+        pinMode(args[0], args[1]);
+        break;
+    case tGPIO:
+        if (digitalRead(args[0]) == HIGH)
+            digitalWrite(args[0], LOW);
+        else
+            digitalWrite(args[0], HIGH);
+        break;
+    case IR_Panasonic:
+        if (args_count > 1)
+            irsend.sendPanasonic(args[0], args[1]);
+        break;
+    case IR_RC5:
+        irsend.sendRC5(args[0]);
+        break;
+    case IR_NEC:
+        irsend.sendNEC(args[0]);
+        break;
+    /*
+    case IR_Sony:
+        irsend.sendSony(args[0]);
+        break;
+    case IR_Sony38:
+        irsend.sendSony38(args[0]);
+        break;
+    case IR_RC6:
+        irsend.sendRC6(args[0]);
+        break;
+    case IR_Sharp:
+        irsend.Sharp(args[0]);
+        break;
+    case IR_JVC:
+        irsend.JVC(args[0]);
+        break;
+    case IR_SAMSUNG:
+        irsend.sendSAMSUNG(args[0]);
+        break;      */
+    case CEC_Send:
+        unsigned char buffer[3];
+        //args[0]
+        buffer[0] = 0x36;
+			  cec_device.TransmitFrame(4, buffer, 1);
+        break;
+    case IP_Get:
+        message = WiFi.localIP().toString();
+        break;
+    default:
+        // Handle unknown protocol
+        return false;
+        break;
+  }
+  return true;
+}
 
 // This function is called when the sysInfo service was requested.
 void handleSysInfo() {
@@ -921,6 +1040,7 @@ void handleSysInfo() {
   result += "  \"flashChipSpeed\": " + String(ESP.getFlashChipSpeed()) + ",\n";
   result += "  \"getCycleCount\": " + String(ESP.getCycleCount()) + ",\n";
   result += "  \"SketchSize\": " + String(ESP.getSketchSize()) + ",\n";
+  result += "  \"FreeSketchSpace\": " + String(ESP.getFreeSketchSpace()) + ",\n";
   result += "  \"getSketchMD5\": " + String(ESP.getSketchMD5()) + ",\n";
   result += "  \"freeHeap\": " + String(ESP.getFreeHeap()) + ",\n";
   result += "  \"system_get_free_heap_size()\": " + String(system_get_free_heap_size()) + ",\n";
