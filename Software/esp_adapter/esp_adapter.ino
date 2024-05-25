@@ -1,6 +1,5 @@
 
 #include <stdint.h>
-#include <Common.h>
 #include <Arduino.h>
 #include <assert.h>
 #include <IRrecv.h>
@@ -13,6 +12,7 @@
 #include <time.h>
 #include <map>
 #if defined(ESP8266)
+#include <Common.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WiFiMulti.h>
 #include <ESP8266mDNS.h>
@@ -142,77 +142,22 @@ const char* update_password = "admin";
 const char* www_username = "admin";
 const char* www_password = "admin";
 
-enum NetStatus {
-  STA_MODE,
-  STA_SC_MODE,
-  AP_MODE
-};
-
-NetStatus currentNetStatus;
-
-enum CommandType {
-  Relay = 0x0,
-  System = 0x1,
-  wGPIO,
-  rGPIO,
-  mGPIO, 
-  tGPIO,   
-  IR_NEC,
-  IR_Sony,
-  IR_Sony38,
-  IR_Panasonic,
-  IR_RC5,
-  IR_RC6,
-  IR_Sharp,
-  IR_JVC,
-  IR_SAMSUNG,
-  CEC_Send,
-  IP_Get
-};
-
-std::map<String, CommandType> commandMap = {
-  {"Relay", Relay},
-  {"System", System},
-  {"wGPIO", wGPIO},
-  {"rGPIO", rGPIO},
-  {"mGPIO", mGPIO},
-  {"tGPIO", tGPIO},
-  {"NEC", IR_NEC},
-  {"Sony", IR_Sony},
-  {"Sony38", IR_Sony38},
-  {"Panasonic", IR_Panasonic},
-  {"RC5", IR_RC5},
-  {"RC6", IR_RC6},
-  {"Sharp", IR_Sharp},
-  {"JVC", IR_JVC},
-  {"SAMSUNG", IR_SAMSUNG},
-  {"CEC_Send", CEC_Send},
-  {"IP_Get", IP_Get}
-};
-
-CommandType stringToCommandType(const String& str) {
-  if (commandMap.find(str) != commandMap.end()) {
-    return commandMap[str];
-  } else {
-    return static_cast<CommandType>(-1);
-  }
-}
-
 // ==================== begin of global class ====================
 IRsend irsend(kIrSendPin);  // Set the GPIO to be used to sending the message.
 decode_results IRRecvResults;     // Somewhere to store the results
 IRrecv irrecv(kIrRecvPin, kCaptureBufferSize, kTimeout, true);
-ESP8266WebServer httpserver(http_port);
 CEC_Device cec_device(kCecPin);
 // BluetoothSerial SerialBT;
 #if defined(ESP8266)
 const char* HOSTNAME = "esp8266";
+ESP8266WebServer httpserver(http_port);
   #if IsSupportMultiWiFi
   ESP8266WiFiMulti wifiMulti;
   #endif
 ESP8266HTTPUpdateServer httpUpdater;
 #else
 const char* HOSTNAME = "esp32-c3";
+WebServer httpserver(http_port);
   #if IsSupportMultiWiFi
   WiFiMulti wifiMulti;
   #endif
@@ -242,6 +187,63 @@ LoggingSerial LogSerial(0);
   #define Serial LogSerial
 #endif
 
+enum NetStatus {
+  STA_MODE,
+  STA_SC_MODE,
+  AP_MODE,
+  UNKNOWN_MODE
+};
+
+NetStatus currentNetStatus = UNKNOWN_MODE;
+
+enum CommandType {
+  Relay = 0x0,
+  System = 0x1,
+  wGPIO,
+  rGPIO,
+  mGPIO, 
+  tGPIO,   
+  IR_NEC,
+  IR_Sony,
+  IR_Sony38,
+  IR_Panasonic,
+  IR_RC5,
+  IR_RC6,
+  IR_Sharp,
+  IR_JVC,
+  IR_SAMSUNG,
+  CEC_Send,
+  IP_Get,
+  UNKNOWN_Command
+};
+
+std::map<String, CommandType> commandMap = {
+  {"wRelay", Relay},
+  {"System", System},
+  {"wGPIO", wGPIO},
+  {"rGPIO", rGPIO},
+  {"mGPIO", mGPIO},
+  {"tGPIO", tGPIO},
+  {"IR_NEC", IR_NEC},
+  {"IR_Sony", IR_Sony},
+  {"IR_Sony38", IR_Sony38},
+  {"IR_Panasonic", IR_Panasonic},
+  {"IR_RC5", IR_RC5},
+  {"IR_RC6", IR_RC6},
+  {"IR_Sharp", IR_Sharp},
+  {"IR_JVC", IR_JVC},
+  {"IR_SAMSUNG", IR_SAMSUNG},
+  {"CEC_Send", CEC_Send},
+  {"IP_Get", IP_Get}
+};
+
+CommandType stringToCommandType(const String& str) {
+  if (commandMap.find(str) != commandMap.end()) {
+    return commandMap[str];
+  } else {
+    return static_cast<CommandType>(-1);
+  }
+}
 
 // ==================== Custom function declaration begins ====================
 void printLocalTime();
@@ -327,6 +329,7 @@ void setup() {
   if(!loadWifiConfigAndTryConnect(wifiConfigFileName) || WiFi.status() != WL_CONNECTED) {
     Serial.println("Failed to connect wifi, We will start AP");
     WiFi.printDiag(Serial);
+    currentNetStatus = AP_MODE;
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAPConfig(APip, APgateway, APsubnet);
     WiFi.softAP(APssid, APpassword);
@@ -335,6 +338,7 @@ void setup() {
     Serial.println(myIP);
     Serial.println();
   } else {
+    currentNetStatus = STA_MODE;
     Serial.print("setup(): WiFi Connected: ");
     Serial.println(WiFi.SSID());
     Serial.print("setup(): IP Address: ");
@@ -396,32 +400,13 @@ void setup() {
 void loop() {
   if(currentNetStatus == AP_MODE)
       checkButton();
-  // Handle SmartConfig
-  if (currentNetStatus == STA_SC_MODE && WiFi.smartConfigDone()) {
-      // Get and save the received WiFi credentials
-      String tmp_ssid = WiFi.SSID();
-      String tmp_password = WiFi.psk();
-      Serial.printf("SmartConfig received, ssid:%s, password:%s\n", tmp_ssid.c_str(), tmp_password.c_str());
-      saveWifiConfig(wifiConfigFileName, tmp_ssid.c_str(), tmp_password.c_str()); 
-
-      // Connect to the received WiFi
-// #if IsSupportMultiWiFi
-//       wifiMulti.addAP(tmp_ssid.c_str(), tmp_password.c_str());
-// #elif
-//       WiFi.begin(tmp_ssid, tmp_password);
-// #endif
-  }
   if (Serial.available() > 0) {
     handleUartCommand();
   }
   cec_device.Run();
   httpserver.handleClient();
   MDNS.update();
-
-
   dumpIR();
-
-
 }
 
 // ========================Custom function begins==============================
@@ -456,7 +441,7 @@ void checkButton() {
 	        WiFi.mode(WIFI_STA);
 	        Serial.println("Starting SmartConfig...");
 	        WiFi.beginSmartConfig();
-		currentNetStatus = STA_SC_MODE;
+		      currentNetStatus = STA_SC_MODE;
           }
       } else { // 長按
         Serial.println("Restarting...");
@@ -563,6 +548,11 @@ void handleWiFiEvent(WiFiEvent_t event){
             Serial.print("Event: IP Address: ");
             Serial.println(WiFi.localIP());
             if(currentNetStatus == STA_SC_MODE) {
+              // Get and save the received WiFi credentials
+              String tmp_ssid = WiFi.SSID();
+              String tmp_password = WiFi.psk();
+              Serial.printf("SmartConfig received, ssid:%s, password:%s\n", tmp_ssid.c_str(), tmp_password.c_str());
+              saveWifiConfig(wifiConfigFileName, tmp_ssid.c_str(), tmp_password.c_str()); 
               WiFi.stopSmartConfig();
               currentNetStatus = STA_MODE;
             }
@@ -881,10 +871,14 @@ void handleUartCommand() {
     return; 
   }
   
+  data.trim(); 
+
+  if(data.length() == 0)
+    return;
+
   int index = 0;
   args_count = 0;
   int lastSpaceIndex = -1;
-  data.trim(); 
   while (index < data.length()) {
     int spaceIndex = data.indexOf(' ', lastSpaceIndex + 1);
     if (spaceIndex == -1) {
@@ -910,6 +904,7 @@ void handleUartCommand() {
   for (int i = 0; i < args_count; i++) {
     Serial.printf("args[%d]: 0x%llx", i, args[i]);
   }
+  Serial.println("");
   String message = "";
   if (handleAPI(protocol, args_count, args, message)){
     Serial.printf("Request processed. %s\n", message.c_str());
