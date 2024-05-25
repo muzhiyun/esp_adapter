@@ -828,15 +828,6 @@ void handleFileManagerUpload() {
       Serial.println("Failed to open file for appending");
     }
   } else if (upload.status == UPLOAD_FILE_END) {
-    if (!file) {      //for handle too small file
-      Serial.println("handle too small file case");
-      file = LittleFS.open(filename, "w");
-      if (file) {
-        file.write(upload.buf, upload.currentSize); 
-      } else {
-        Serial.println("Failed to open file for writing at end");
-      }
-    }
     if (file) {
       file.close(); // Close the file when upload is finished
     }
